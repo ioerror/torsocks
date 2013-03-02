@@ -1347,6 +1347,8 @@ ssize_t torsocks_recv_guts(RECV_SIGNATURE, ssize_t(*original_recv)(RECV_SIGNATUR
 
 ssize_t torsocks_readv_guts(READV_SIGNATURE, ssize_t(*original_readv)(READV_SIGNATURE))
 {
+    struct connreq *conn;
+    
     /* If the real readv doesn't exist, we're stuffed */
     if (original_readv == NULL) {
         show_msg(MSGERR, "Unresolved symbol: readv\n");
@@ -1354,6 +1356,17 @@ ssize_t torsocks_readv_guts(READV_SIGNATURE, ssize_t(*original_readv)(READV_SIGN
     }
 
     show_msg(MSGTEST, "Got readv request\n");
+
+    /* Are we handling this connect? */
+    if ((conn = find_socks_request(fd, 1))) {
+	/* Complete SOCKS handshake if necessary */
+	handle_request(conn);
+
+        if (conn->state != DONE) {
+            errno = ENOTCONN;
+            return(-1);
+        }
+    }
 
     return original_readv(fd, iov, iovcnt);
 }
