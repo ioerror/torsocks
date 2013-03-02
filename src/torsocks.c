@@ -1350,6 +1350,11 @@ int torsocks_ppoll_guts(PPOLL_SIGNATURE, int(*original_ppoll)(PPOLL_SIGNATURE))
 
 int torsocks_pselect_guts(PSELECT_SIGNATURE, int(*original_pselect)(PSELECT_SIGNATURE))
 {
+    int nevents = 0;
+    int monitoring = 0;
+    struct connreq *conn;
+    struct selectopts opts;
+
     /* If the real pselect doesn't exist, we're stuffed */
     if (original_pselect == NULL) {
         show_msg(MSGERR, "Unresolved symbol: pselect\n");
@@ -1358,5 +1363,39 @@ int torsocks_pselect_guts(PSELECT_SIGNATURE, int(*original_pselect)(PSELECT_SIGN
 
     show_msg(MSGTEST, "Got pselect request\n");
 
-    return original_pselect(nfds, readfds, writefds, exceptfds, timeout, sigmask);
+    /* If we're not currently managing any requests we can just
+     * leave here */
+    if (!requests) {
+        show_msg(MSGDEBUG, "No requests waiting, calling real pselect\n");
+        return(original_pselect(nfds, readfds, writefds, exceptfds, timeout, sigmask));
+    }
+
+    show_msg(MSGTEST, "Intercepted call to pselect\n");
+    show_msg(MSGDEBUG, "Intercepted call to pselect with %d fds, "
+              "0x%08x 0x%08x 0x%08x, timeout %08x\n", nfds,
+              readfds, writefds, exceptfds, timeout);
+
+    for (conn = requests; conn != NULL; conn = conn->next) {
+        if ((conn->state == FAILED) || (conn->state == DONE))
+            continue;
+        conn->selectevents = 0;
+        show_msg(MSGDEBUG, "Checking requests for socks enabled socket %d\n",
+                 conn->sockid);
+        conn->selectevents |= (writefds ? (FD_ISSET(conn->sockid, writefds) ? WRITE : 0) : 0);
+        conn->selectevents |= (readfds ? (FD_ISSET(conn->sockid, readfds) ? READ : 0) : 0);
+        conn->selectevents |= (exceptfds ? (FD_ISSET(conn->sockid, exceptfds) ? EXCEPT : 0) : 0);
+        if (conn->selectevents) {
+            show_msg(MSGDEBUG, "Socket %d was set for events\n", conn->sockid);
+            monitoring = 1;
+        }
+    }
+
+    if (!monitoring)
+        return(original_pselect(nfds, readfds, writefds, exceptfds, timeout, sigmask));
+    
+    opts.is_select = 0;
+    opts.pselect_timeout = timeout;
+    nevents = torsocks_select_common(nfds, readfds, writefds, exceptfds, NULL, original_pselect, opts);
+    
+    return(nevents);
 }
