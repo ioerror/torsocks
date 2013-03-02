@@ -775,6 +775,8 @@ inline int torsocks_poll_common(struct pollfd * ufds, nfds_t nfds,
                  * leaves us a bit hamstrung.
                  * We don't delete the request so that hopefully we can
                  * return the error on the socket if they call connect() on it */
+            } else if (conn->state == DONE) {
+                kill_socks_request(conn);
             } else {
                 /* The connection is done,  if the client polled for
                  * writing we can go ahead and signal that now (since the socket must
