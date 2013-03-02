@@ -471,6 +471,9 @@ inline int torsocks_select_common(int nfds, fd_set * writefds, fd_set * readfds,
             if ((conn->state == FAILED) || (conn->state == DONE) ||
                 (conn->selectevents == 0))
                 continue;
+
+	    show_msg(MSGDEBUG, "Found our request, %x\n", conn);
+
             /* We always want to know about socket exceptions */
             FD_SET(conn->sockid, &myexceptfds);
             /* If we're waiting for a connect or to be able to send
@@ -481,16 +484,25 @@ inline int torsocks_select_common(int nfds, fd_set * writefds, fd_set * readfds,
                 FD_CLR(conn->sockid,&mywritefds);
             /* If we're waiting to receive data we want to get
               * read events */
-            if (conn->state == RECEIVING)
+            if (conn->state == RECEIVING || conn->state == SENTV4REQ ||
+                conn->state == SENTV5CONNECT || conn->state == CONNECTING)
                 FD_SET(conn->sockid,&myreadfds);
             else
                 FD_CLR(conn->sockid,&myreadfds);
+
+            show_msg(MSGDEBUG, "Events on socket are read: %d, "
+	                       "write %d, except %d\n",
+			       (FD_ISSET(conn->sockid, &myreadfds) ? 1 : 0),
+			       (FD_ISSET(conn->sockid, &mywritefds) ? 1 : 0),
+			       (FD_ISSET(conn->sockid, &myexceptfds) ? 1 : 0));
         }
 
         if (opts.is_select)
-          nevents = original_select(nfds, readfds, writefds, exceptfds, opts.select_timeout);
+          nevents = original_select(nfds, &myreadfds, &mywritefds, &myexceptfds, opts.select_timeout);
         else
-          nevents = original_pselect(nfds, readfds, writefds, exceptfds, opts.pselect_timeout, opts.sigmask);
+          nevents = original_pselect(nfds, &myreadfds, &mywritefds, &myexceptfds, opts.pselect_timeout, opts.sigmask);
+        
+	show_msg(MSGDEBUG, "%s returned with %d\n", (opts.is_select ? "select" : "pselect"), nevents);
 
         /* If there were no events we must have timed out or had an error */
         if (nevents <= 0)
@@ -566,6 +578,8 @@ inline int torsocks_select_common(int nfds, fd_set * writefds, fd_set * readfds,
                 * leaves us a bit hamstrung.
                 * We don't delete the request so that hopefully we can
                 * return the error on the socket if they call connect() on it */
+            } else if (conn->state == DONE) {
+                kill_socks_request(conn);
             } else {
                 /* The connection is done,  if the client selected for
                 * writing we can go ahead and signal that now (since the socket must
