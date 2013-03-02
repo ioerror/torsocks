@@ -92,6 +92,15 @@ static struct parsedfile config;
 static int suid = 0;
 static char *conffile = NULL;
 
+struct selectopts {
+  int is_select;
+  union {
+    struct timeval * select_timeout;
+    const struct timespec * pselect_timeout;
+  };
+  const sigset_t * sigmask;
+};
+
 /* Exported Function Prototypes */
 void __attribute__ ((constructor)) torsocks_init(void);
 
@@ -424,46 +433,17 @@ int torsocks_connect_guts(CONNECT_SIGNATURE, int (*original_connect)(CONNECT_SIG
     }
 }
 
-int torsocks_select_guts(SELECT_SIGNATURE, int (*original_select)(SELECT_SIGNATURE))
+/* Common functionality of select and pselect */
+inline int torsocks_select_common(int nfds, fd_set * writefds, fd_set * readfds, 
+                 fd_set * exceptfds, int (*original_select)(SELECT_SIGNATURE),
+                 int (*original_pselect)(PSELECT_SIGNATURE), struct selectopts opts)
 {
     int nevents = 0;
-    int rc = 0;
     int setevents = 0;
-    int monitoring = 0;
     struct connreq *conn, *nextconn;
     fd_set mywritefds, myreadfds, myexceptfds;
 
-    /* If we're not currently managing any requests we can just
-     * leave here */
-    if (!requests) {
-        show_msg(MSGDEBUG, "No requests waiting, calling real select\n");
-        return(original_select(n, readfds, writefds, exceptfds, timeout));
-    }
-
-    show_msg(MSGTEST, "Intercepted call to select\n");
-    show_msg(MSGDEBUG, "Intercepted call to select with %d fds, "
-              "0x%08x 0x%08x 0x%08x, timeout %08x\n", n,
-              readfds, writefds, exceptfds, timeout);
-
-    for (conn = requests; conn != NULL; conn = conn->next) {
-        if ((conn->state == FAILED) || (conn->state == DONE))
-            continue;
-        conn->selectevents = 0;
-        show_msg(MSGDEBUG, "Checking requests for socks enabled socket %d\n",
-                 conn->sockid);
-        conn->selectevents |= (writefds ? (FD_ISSET(conn->sockid, writefds) ? WRITE : 0) : 0);
-        conn->selectevents |= (readfds ? (FD_ISSET(conn->sockid, readfds) ? READ : 0) : 0);
-        conn->selectevents |= (exceptfds ? (FD_ISSET(conn->sockid, exceptfds) ? EXCEPT : 0) : 0);
-        if (conn->selectevents) {
-            show_msg(MSGDEBUG, "Socket %d was set for events\n", conn->sockid);
-            monitoring = 1;
-        }
-    }
-
-    if (!monitoring)
-        return(original_select(n, readfds, writefds, exceptfds, timeout));
-
-    /* This is our select loop. In it we repeatedly call select(). We
+    /* This is our [p]select loop. In it we repeatedly call [p]select(). We
       * pass select the same fdsets as provided by the caller except we
       * modify the fdsets for the sockets we're managing to get events
       * we're interested in (while negotiating with the socks server). When
@@ -507,7 +487,11 @@ int torsocks_select_guts(SELECT_SIGNATURE, int (*original_select)(SELECT_SIGNATU
                 FD_CLR(conn->sockid,&myreadfds);
         }
 
-        nevents = original_select(n, &myreadfds, &mywritefds, &myexceptfds, timeout);
+        if (opts.is_select)
+          nevents = original_select(nfds, readfds, writefds, exceptfds, opts.select_timeout);
+        else
+          nevents = original_pselect(nfds, readfds, writefds, exceptfds, opts.pselect_timeout, opts.sigmask);
+
         /* If there were no events we must have timed out or had an error */
         if (nevents <= 0)
             break;
@@ -549,7 +533,7 @@ int torsocks_select_guts(SELECT_SIGNATURE, int (*original_select)(SELECT_SIGNATU
             if (setevents & EXCEPT)
                 conn->state = FAILED;
             else
-                rc = handle_request(conn);
+                handle_request(conn);
 
             /* If the connection hasn't failed or completed there is nothing
               * to report to the client */
@@ -606,6 +590,50 @@ int torsocks_select_guts(SELECT_SIGNATURE, int (*original_select)(SELECT_SIGNATU
     if (exceptfds)
         memcpy(exceptfds, &myexceptfds, sizeof(myexceptfds));
 
+    return nevents;
+}
+
+int torsocks_select_guts(SELECT_SIGNATURE, int (*original_select)(SELECT_SIGNATURE))
+{
+    int nevents = 0;
+    int monitoring = 0;
+    struct connreq *conn;
+    struct selectopts opts;
+
+    /* If we're not currently managing any requests we can just
+     * leave here */
+    if (!requests) {
+        show_msg(MSGDEBUG, "No requests waiting, calling real select\n");
+        return(original_select(n, readfds, writefds, exceptfds, timeout));
+    }
+
+    show_msg(MSGTEST, "Intercepted call to select\n");
+    show_msg(MSGDEBUG, "Intercepted call to select with %d fds, "
+              "0x%08x 0x%08x 0x%08x, timeout %08x\n", n,
+              readfds, writefds, exceptfds, timeout);
+
+    for (conn = requests; conn != NULL; conn = conn->next) {
+        if ((conn->state == FAILED) || (conn->state == DONE))
+            continue;
+        conn->selectevents = 0;
+        show_msg(MSGDEBUG, "Checking requests for socks enabled socket %d\n",
+                 conn->sockid);
+        conn->selectevents |= (writefds ? (FD_ISSET(conn->sockid, writefds) ? WRITE : 0) : 0);
+        conn->selectevents |= (readfds ? (FD_ISSET(conn->sockid, readfds) ? READ : 0) : 0);
+        conn->selectevents |= (exceptfds ? (FD_ISSET(conn->sockid, exceptfds) ? EXCEPT : 0) : 0);
+        if (conn->selectevents) {
+            show_msg(MSGDEBUG, "Socket %d was set for events\n", conn->sockid);
+            monitoring = 1;
+        }
+    }
+
+    if (!monitoring)
+        return(original_select(n, readfds, writefds, exceptfds, timeout));
+    
+    opts.is_select = 1;
+    opts.select_timeout = timeout;
+    nevents = torsocks_select_common(n, readfds, writefds, exceptfds, original_select, NULL, opts);
+    
     return(nevents);
 }
 
