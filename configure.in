@@ -666,6 +666,33 @@ fi
   AC_DEFINE_UNQUOTED([PSELECT_SIGNATURE], [${PROTO}],[Description])
   AC_DEFINE_UNQUOTED([PSELECT_ARGNAMES],[${NAMES}],[Argument names])
 
+dnl Find the correct signature for recvfrom
+AC_MSG_CHECKING(for correct recvfrom prototype)
+PROTO=
+TESTPROTO="int s, void * buf, size_t len, int flags, __SOCKADDR_ARG addr, "
+TESTPROTO="${TESTPROTO}socklen_t * addr_len"
+TESTPROTO0="int s, void * buf, size_t len, int flags, "
+TESTPROTO0="${TESTPROTO0}struct sockaddr * __restrict addr, socklen_t * addr_len"
+NAMES='s, buf, len, flags, addr, addr_len'
+for testproto in "${TESTPROTO}" "${TESTPROTO0}"
+do
+  if test "${PROTO}" = ""; then
+    AC_TRY_COMPILE([
+      #include <sys/types.h>
+      #include <sys/socket.h>
+
+      ssize_t recvfrom($testproto);
+    ],,[PROTO="$testproto";],)
+  fi
+done
+if test "${PROTO}" = ""; then
+  AC_MSG_ERROR("no match found!")
+fi
+AC_MSG_RESULT([recvfrom(${PROTO})])
+AC_DEFINE_UNQUOTED(RECVFROM_SIGNATURE, [${PROTO}], [Description])
+AC_DEFINE_UNQUOTED([RECVFROM_ARGNAMES],[${NAMES}],[Argument names])
+
+
 
 case "$host_os" in
 linux*)
@@ -790,13 +817,6 @@ PROTO="int s, const struct msghdr *msg, int flags"
 NAMES='s, msg, flags'
 AC_DEFINE_UNQUOTED(SENDMSG_SIGNATURE, [${PROTO}], [Description])
 AC_DEFINE_UNQUOTED([SENDMSG_ARGNAMES],[${NAMES}],[Argument names])
-
-dnl Emit signature for recvfrom
-PROTO="int s, void * buf, size_t len, int flags, __SOCKADDR_ARG addr, "
-PROTO="${PROTO}socklen_t * addr_len"
-NAMES='s, buf, len, flags, addr, addr_len'
-AC_DEFINE_UNQUOTED(RECVFROM_SIGNATURE, [${PROTO}], [Description])
-AC_DEFINE_UNQUOTED([RECVFROM_ARGNAMES],[${NAMES}],[Argument names])
 
 dnl Emit signature for recvmsg
 PROTO="int s, struct msghdr *msg, int flags"
