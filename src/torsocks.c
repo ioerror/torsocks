@@ -1383,6 +1383,11 @@ ssize_t torsocks_writev_guts(WRITEV_SIGNATURE, ssize_t(*original_writev)(WRITEV_
 #if PPOLL_AVAILABLE
 int torsocks_ppoll_guts(PPOLL_SIGNATURE, int(*original_ppoll)(PPOLL_SIGNATURE))
 {
+    unsigned int i;
+    int monitoring = 0;
+    struct connreq *conn;
+    struct pollopts opts;
+
     /* If the real ppoll doesn't exist, we're stuffed */
     if (original_ppoll == NULL) {
         show_msg(MSGERR, "Unresolved symbol: ppoll\n");
@@ -1391,7 +1396,35 @@ int torsocks_ppoll_guts(PPOLL_SIGNATURE, int(*original_ppoll)(PPOLL_SIGNATURE))
 
     show_msg(MSGTEST, "Got ppoll request\n");
 
-    return original_ppoll(fds, nfds, timeout, sigmask);
+    /* If we're not currently managing any requests we can just
+      * leave here */
+    if (!requests)
+        return(original_ppoll(fds, nfds, timeout, sigmask));
+
+    show_msg(MSGTEST, "Intercepted call to ppoll\n");
+    show_msg(MSGDEBUG, "Intercepted call to ppoll with %d fds, "
+              "0x%08x timeout %d\n", nfds, fds, timeout);
+
+    for (conn = requests; conn != NULL; conn = conn->next)
+        conn->selectevents = 0;
+
+    /* Record what events on our sockets the caller was interested
+      * in */
+    for (i = 0; i < nfds; i++) {
+        if (!(conn = find_socks_request(fds[i].fd, 0)))
+            continue;
+        show_msg(MSGDEBUG, "Have event checks for socks enabled socket %d\n",
+                conn->sockid);
+        conn->selectevents = fds[i].events;
+        monitoring = 1;
+    }
+
+    if (!monitoring)
+        return(original_ppoll(fds, nfds, timeout, sigmask));
+
+    opts.ppoll_timeout_ts = timeout;
+    opts.sigmask = sigmask;
+    return torsocks_poll_common(fds, nfds, NULL, original_ppoll, opts);
 }
 #endif /* PPOLL_AVAILABLE */
 
