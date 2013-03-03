@@ -1191,6 +1191,10 @@ ssize_t torsocks_sendmsg_guts(SENDMSG_SIGNATURE, ssize_t (*original_sendmsg)(SEN
 #ifdef SENDMMSG_AVAILABLE
 int torsocks_sendmmsg_guts(SENDMMSG_SIGNATURE, int (*original_sendmmsg)(SENDMMSG_SIGNATURE))
 {
+    int sock_type = -1;
+    unsigned int sock_type_len = sizeof(sock_type);
+    struct sockaddr_in *connaddr;
+
     /* If the real sendmmsg doesn't exist, we're stuffed */
     if (original_sendmmsg == NULL) {
         show_msg(MSGERR, "Unresolved symbol: sendmmsg\n");
@@ -1198,6 +1202,27 @@ int torsocks_sendmmsg_guts(SENDMMSG_SIGNATURE, int (*original_sendmmsg)(SENDMMSG
     }
 
     show_msg(MSGTEST, "Got sendmmsg request\n");
+
+    /* Get the type of the socket */
+    getsockopt(s, SOL_SOCKET, SO_TYPE,
+               (void *) &sock_type, &sock_type_len);
+
+    show_msg(MSGDEBUG, "sockopt: %i\n",  sock_type);
+
+    if ((sock_type != SOCK_STREAM)) {
+        show_msg(MSGERR, "sendmsg: Connection is a UDP or ICMP stream, may be a "
+                          "DNS request or other form of leak: rejecting.\n");
+        return -1;
+    }
+
+    connaddr = (struct sockaddr_in *) msgvec->msg_hdr.msg_name;
+
+    /* If there is no address in msg_name, sendmsg will only work if we
+       already allowed the socket to connect(), so we let it through.
+       Likewise if the socket is not an Internet connection. */
+    if (connaddr && (connaddr->sin_family != AF_INET)) {
+        show_msg(MSGDEBUG, "Connection isn't an Internet socket\n");
+    }
 
     return original_sendmmsg(s, msgvec, vlen, flags);
 }
