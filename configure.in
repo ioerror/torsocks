@@ -68,6 +68,14 @@ dnl Checks for library functions.
 AC_CHECK_FUNCS(strcspn strdup strerror strspn strtol mmap strcasecmp \
    strncasecmp strtol,,[AC_MSG_ERROR("Required function not found")])
 
+dnl Check if the C compiler accepts -Werror
+AC_MSG_CHECKING(if the C compiler accepts -Werror)
+OLDCFLAGS="$CFLAGS"
+CFLAGS="$CFLAGS -Werror"
+AC_TRY_COMPILE(,,AC_MSG_RESULT(yes),[
+   CFLAGS="$OLDCFLAGS"
+   AC_MSG_RESULT(no)])
+
 ##############################################################################
 # 3. Determine libraries we need to include when linking libtorsocks.
 #    OpenBSD and OSX have some special requirements here.
