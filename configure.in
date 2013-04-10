@@ -735,8 +735,9 @@ linux*)
       AC_TRY_COMPILE([
         #define _GNU_SOURCE
         #include <sys/socket.h>
-        int sendmmsg($testproto);
-      ],,[PROTO="$testproto";],)
+	#include <stdlib.h>
+      ],[sendmmsg(0, NULL, 0, 0)
+      ],[PROTO="$testproto";],)
     fi
   done
   if test "${PROTO}" = ""; then
@@ -762,8 +763,10 @@ linux*)
       AC_TRY_COMPILE([
         #define _GNU_SOURCE
         #include <sys/socket.h>
+        #include <stdlib.h>
         int recvmmsg($testproto);
-      ],,[PROTO="$testproto";],)
+      ],[recvmmsg(0, NULL, 0, 0, 0)
+      ],[PROTO="$testproto";],)
     fi
   done
   if test "${PROTO}" = ""; then
