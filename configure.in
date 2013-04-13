@@ -691,6 +691,7 @@ linux*)
     AC_DEFINE_UNQUOTED([PPOLL_ARGNAMES],[],[Argument names])
   else
     AC_MSG_RESULT([ppoll(${PROTO})])
+    AC_DEFINE_UNQUOTED([PPOLL_AVAILABLE], [1],[Description])
     AC_DEFINE_UNQUOTED([PPOLL_SIGNATURE], [${PROTO}],[Description])
     AC_DEFINE_UNQUOTED([PPOLL_ARGNAMES],[${NAMES}],[Argument names])
   fi
