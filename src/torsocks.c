@@ -1110,6 +1110,12 @@ ssize_t torsocks_sendmsg_guts(SENDMSG_SIGNATURE, ssize_t (*original_sendmsg)(SEN
 #ifdef SENDMMSG_AVAILABLE
 int torsocks_sendmmsg_guts(SENDMMSG_SIGNATURE, int (*original_sendmmsg)(SENDMMSG_SIGNATURE))
 {
+    /* If the real sendmmsg doesn't exist, we're stuffed */
+    if (original_sendmmsg == NULL) {
+        show_msg(MSGERR, "Unresolved symbol: sendmmsg\n");
+        return(-1);
+    }
+
     return original_sendmmsg(s, msgvec, vlen, flags);
 }
 #endif /* SENDMMSG_AVAILABLE */
@@ -1117,58 +1123,124 @@ int torsocks_sendmmsg_guts(SENDMMSG_SIGNATURE, int (*original_sendmmsg)(SENDMMSG
 #ifdef RECVMMSG_AVAILABLE
 int torsocks_recvmmsg_guts(RECVMMSG_SIGNATURE, int (*original_recvmmsg)(RECVMMSG_SIGNATURE))
 {
+    /* If the real recvmmsg doesn't exist, we're stuffed */
+    if (original_recvmmsg == NULL) {
+        show_msg(MSGERR, "Unresolved symbol: recvmmsg\n");
+        return(-1);
+    }
+
     return original_recvmmsg(s, msgvec, vlen, flags, timeout);
 }
 #endif /* RECVMMSG_AVAILABLE */
 
 ssize_t torsocks_recvfrom_guts(RECVFROM_SIGNATURE, ssize_t(*original_recvfrom)(RECVFROM_SIGNATURE))
 {
+    /* If the real recvfrom doesn't exist, we're stuffed */
+    if (original_recvfrom == NULL) {
+        show_msg(MSGERR, "Unresolved symbol: recvfrom\n");
+        return(-1);
+    }
+
     return (ssize_t) original_recvfrom(s, buf, len, flags, addr, addr_len);
 }
 
 ssize_t torsocks_recvmsg_guts(RECVMSG_SIGNATURE, ssize_t(*original_recvmsg)(RECVMSG_SIGNATURE))
 {
+    /* If the real recvmsg doesn't exist, we're stuffed */
+    if (original_recvmsg == NULL) {
+        show_msg(MSGERR, "Unresolved symbol: recvmsg\n");
+        return(-1);
+    }
+
     return (ssize_t) original_recvmsg(s, msg, flags);
 }
 
 ssize_t torsocks_write_guts(WRITE_SIGNATURE, ssize_t(*original_write)(WRITE_SIGNATURE))
 {
+    /* If the real write doesn't exist, we're stuffed */
+    if (original_write == NULL) {
+        show_msg(MSGERR, "Unresolved symbol: write\n");
+        return(-1);
+    }
+
     return original_write(fd, buf, count);
 }
 
 ssize_t torsocks_read_guts(READ_SIGNATURE, ssize_t(*original_read)(READ_SIGNATURE))
 {
+    /* If the real read doesn't exist, we're stuffed */
+    if (original_read == NULL) {
+        show_msg(MSGERR, "Unresolved symbol: read\n");
+        return(-1);
+    }
+
     return original_read(fd, buf, count);
 }
 
 ssize_t torsocks_send_guts(SEND_SIGNATURE, ssize_t(*original_send)(SEND_SIGNATURE))
 {
+    /* If the real send doesn't exist, we're stuffed */
+    if (original_send == NULL) {
+        show_msg(MSGERR, "Unresolved symbol: send\n");
+        return(-1);
+    }
+
     return original_send(fd, buf, count, flags);
 }
 
 ssize_t torsocks_recv_guts(RECV_SIGNATURE, ssize_t(*original_recv)(RECV_SIGNATURE))
 {
+    /* If the real recv doesn't exist, we're stuffed */
+    if (original_recv == NULL) {
+        show_msg(MSGERR, "Unresolved symbol: recv\n");
+        return(-1);
+    }
+
     return original_recv(fd, buf, count, flags);
 }
 
 ssize_t torsocks_readv_guts(READV_SIGNATURE, ssize_t(*original_readv)(READV_SIGNATURE))
 {
+    /* If the real readv doesn't exist, we're stuffed */
+    if (original_readv == NULL) {
+        show_msg(MSGERR, "Unresolved symbol: readv\n");
+        return(-1);
+    }
+
     return original_readv(fd, iov, iovcnt);
 }
 
 ssize_t torsocks_writev_guts(WRITEV_SIGNATURE, ssize_t(*original_writev)(WRITEV_SIGNATURE))
 {
+    /* If the real writev doesn't exist, we're stuffed */
+    if (original_writev == NULL) {
+        show_msg(MSGERR, "Unresolved symbol: writev\n");
+        return(-1);
+    }
+
     return original_writev(fd, iov, iovcnt);
 }
 
 #if PPOLL_AVAILABLE
 int torsocks_ppoll_guts(PPOLL_SIGNATURE, int(*original_ppoll)(PPOLL_SIGNATURE))
 {
+    /* If the real ppoll doesn't exist, we're stuffed */
+    if (original_ppoll == NULL) {
+        show_msg(MSGERR, "Unresolved symbol: ppoll\n");
+        return(-1);
+    }
+
     return original_ppoll(fds, nfds, timeout, sigmask);
 }
 #endif /* PPOLL_AVAILABLE */
 
 int torsocks_pselect_guts(PSELECT_SIGNATURE, int(*original_pselect)(PSELECT_SIGNATURE))
 {
+    /* If the real pselect doesn't exist, we're stuffed */
+    if (original_pselect == NULL) {
+        show_msg(MSGERR, "Unresolved symbol: pselect\n");
+        return(-1);
+    }
+
     return original_pselect(nfds, readfds, writefds, exceptfds, timeout, sigmask);
 }
