@@ -647,7 +647,8 @@ TESTPROTO="${TESTPROTO}fd_set * writefds, "
 TESTPROTO="${TESTPROTO}fd_set * exceptfds, "
 TESTPROTO="${TESTPROTO}const struct timespec * timeout, "
 TESTPROTO="${TESTPROTO}const sigset_t * sigmask"
-for testproto in "${TESTPROTO}"
+TESTPROTO0=''
+for testproto in "${TESTPROTO}" "${TESTPROTO0}"
 do
   if test "${PROTO}" = ""; then
     AC_TRY_COMPILE([
@@ -700,7 +701,8 @@ linux*)
   AC_MSG_CHECKING(for correct sendmmsg prototype)
   PROTO=
   NAMES='s, msgvec, vlen, flags'
-  for testproto in 'int s, struct mmsghdr *msgvec, unsigned int vlen, int flags'
+  for testproto in 'int s, struct mmsghdr *msgvec, unsigned int vlen, int flags' \
+                   ''
   do
     if test "${PROTO}" = ""; then
       AC_TRY_COMPILE([
@@ -726,7 +728,8 @@ linux*)
   NAMES='s, msgvec, vlen, flags, timeout'
   TESTPROTO='int s, struct mmsghdr *msgvec, unsigned int vlen, int flags, '
   TESTPROTO="${TESTPROTO}const struct timespec *timeout"
-  for testproto in "${TESTPROTO}"
+  TESTPROTO0=''
+  for testproto in "${TESTPROTO}" "${TESTPROTO0}"
   do
     if test "${PROTO}" = ""; then
       AC_TRY_COMPILE([
