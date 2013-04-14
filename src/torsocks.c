@@ -702,8 +702,13 @@ inline int torsocks_poll_common(struct pollfd * ufds, nfds_t nfds,
 
 	if (opts.is_poll)
             nevents = original_poll(ufds, nfds, opts.poll_timeout);
+	#ifdef PPOLL_AVAILABLE
         else
             nevents = original_ppoll(ufds, nfds, opts.ppoll_timeout_ts, opts.sigmask);
+	#endif /* PPOLL_AVAILABLE */
+        
+	show_msg(MSGDEBUG, "%s returned with %d\n", (opts.is_poll ? "poll" : "ppoll"), nevents);
+
         /* If there were no events we must have timed out or had an error */
         if (nevents <= 0)
             break;
