@@ -75,6 +75,8 @@ struct connreq {
    unsigned int datadone;
    char buffer[2048];
 
+   int using_optdata;
+
    struct connreq *next;
 };
 

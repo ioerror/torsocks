@@ -68,6 +68,14 @@ dnl Checks for library functions.
 AC_CHECK_FUNCS(strcspn strdup strerror strspn strtol mmap strcasecmp \
    strncasecmp strtol,,[AC_MSG_ERROR("Required function not found")])
 
+dnl Check if the C compiler accepts -Werror
+AC_MSG_CHECKING(if the C compiler accepts -Werror)
+OLDCFLAGS="$CFLAGS"
+CFLAGS="$CFLAGS -Werror"
+AC_TRY_COMPILE(,,AC_MSG_RESULT(yes),[
+   CFLAGS="$OLDCFLAGS"
+   AC_MSG_RESULT(no)])
+
 ##############################################################################
 # 3. Determine libraries we need to include when linking libtorsocks.
 #    OpenBSD and OSX have some special requirements here.
@@ -269,7 +277,8 @@ fi
 #     connect, poll, select, close, getpeername, res_query,
 #     res_init, res_send, res_querydomain, gethostbyname,
 #     gethostbyaddr, getaddrinfo, getipnodebyname, sendto,
-#     sendmsg
+#     sendmsg, recvmsg, read, write, send, recv, recvfrom,
+#     writev, readv, sendmmsg, recvmmsg, ppoll, pselect
 ##############################################################################
 
 dnl Find the correct select prototype on this machine
@@ -332,6 +341,7 @@ case "${PROTO}" in
       ;;
 esac
 AC_DEFINE_UNQUOTED([CONNECT_SOCKARG],[${SOCKETARG}],[Description])
+
 
 dnl Find the correct close prototype on this machine 
 AC_MSG_CHECKING(for correct close prototype)
@@ -480,7 +490,6 @@ AC_MSG_RESULT([getpeername(${PROTO})])
 AC_DEFINE_UNQUOTED(GETPEERNAME_SIGNATURE, [${PROTO}],[Description])
 AC_DEFINE_UNQUOTED([GETPEERNAME_ARGNAMES],[${NAMES}],[Argument names])
 
-
 dnl Find the correct poll prototype on this machine 
 AC_MSG_CHECKING(for correct poll prototype)
 PROTO=
@@ -502,6 +511,286 @@ fi
 AC_MSG_RESULT([poll(${PROTO})])
 AC_DEFINE_UNQUOTED([POLL_SIGNATURE], [${PROTO}],[Description])
 AC_DEFINE_UNQUOTED([POLL_ARGNAMES],[${NAMES}],[Argument names])
+
+
+dnl Find the correct write prototype on this machine 
+AC_MSG_CHECKING(for correct write prototype)
+PROTO=
+NAMES='fd, buf, count'
+for testproto in 'int fd, const void *buf, size_t count'
+do
+  if test "${PROTO}" = ""; then
+    AC_TRY_COMPILE([
+      #include <unistd.h>
+      ssize_t write($testproto);
+    ],,[PROTO="$testproto";],)
+  fi
+done
+if test "${PROTO}" = ""; then
+  AC_MSG_ERROR("no match found!")
+fi
+AC_MSG_RESULT([write(${PROTO})])
+AC_DEFINE_UNQUOTED([WRITE_SIGNATURE], [${PROTO}],[Description])
+AC_DEFINE_UNQUOTED([WRITE_ARGNAMES],[${NAMES}],[Argument names])
+
+dnl Find the correct read prototype on this machine 
+AC_MSG_CHECKING(for correct read prototype)
+PROTO=
+NAMES='fd, buf, count'
+for testproto in 'int fd, void *buf, size_t count' \
+                 'struct pollfd *ufds, nfds_t nfds, int timeout' \
+                 'struct pollfd *ufds, unsigned int nfds, int timeout'
+do
+  if test "${PROTO}" = ""; then
+    AC_TRY_COMPILE([
+      #include <unistd.h>
+      ssize_t read($testproto);
+    ],,[PROTO="$testproto";],)
+  fi
+done
+if test "${PROTO}" = ""; then
+  AC_MSG_ERROR("no match found!")
+fi
+AC_MSG_RESULT([read(${PROTO})])
+AC_DEFINE_UNQUOTED([READ_SIGNATURE], [${PROTO}],[Description])
+AC_DEFINE_UNQUOTED([READ_ARGNAMES],[${NAMES}],[Argument names])
+
+dnl Find the correct send prototype on this machine 
+AC_MSG_CHECKING(for correct send prototype)
+PROTO=
+NAMES='fd, buf, count, flags'
+for testproto in 'int fd, const void *buf, size_t count, int flags' \
+                 'struct pollfd *ufds, nfds_t nfds, int timeout' \
+                 'struct pollfd *ufds, unsigned int nfds, int timeout'
+do
+  if test "${PROTO}" = ""; then
+    AC_TRY_COMPILE([
+      #include <sys/types.h>
+      #include <sys/socket.h>
+      ssize_t send($testproto);
+    ],,[PROTO="$testproto";],)
+  fi
+done
+if test "${PROTO}" = ""; then
+  AC_MSG_ERROR("no match found!")
+fi
+AC_MSG_RESULT([send(${PROTO})])
+AC_DEFINE_UNQUOTED([SEND_SIGNATURE], [${PROTO}],[Description])
+AC_DEFINE_UNQUOTED([SEND_ARGNAMES],[${NAMES}],[Argument names])
+
+dnl Find the correct recv prototype on this machine 
+AC_MSG_CHECKING(for correct recv prototype)
+PROTO=
+NAMES='fd, buf, count, flags'
+for testproto in 'int fd, void *buf, size_t count, int flags' \
+                 'struct pollfd *ufds, nfds_t nfds, int timeout' \
+                 'struct pollfd *ufds, unsigned int nfds, int timeout'
+do
+  if test "${PROTO}" = ""; then
+    AC_TRY_COMPILE([
+      #include <sys/types.h>
+      #include <sys/socket.h>
+      ssize_t recv($testproto);
+    ],,[PROTO="$testproto";],)
+  fi
+done
+if test "${PROTO}" = ""; then
+  AC_MSG_ERROR("no match found!")
+fi
+AC_MSG_RESULT([recv(${PROTO})])
+AC_DEFINE_UNQUOTED([RECV_SIGNATURE], [${PROTO}],[Description])
+AC_DEFINE_UNQUOTED([RECV_ARGNAMES],[${NAMES}],[Argument names])
+
+dnl Find the correct readv prototype on this machine 
+AC_MSG_CHECKING(for correct readv prototype)
+PROTO=
+NAMES='fd, iov, iovcnt'
+for testproto in 'int fd, const struct iovec *iov, int iovcnt' \
+                 'struct pollfd *ufds, nfds_t nfds, int timeout' \
+                 'struct pollfd *ufds, unsigned int nfds, int timeout'
+do
+  if test "${PROTO}" = ""; then
+    AC_TRY_COMPILE([
+      #include <sys/uio.h>
+      ssize_t readv($testproto);
+    ],,[PROTO="$testproto";],)
+  fi
+done
+if test "${PROTO}" = ""; then
+  AC_MSG_ERROR("no match found!")
+fi
+AC_MSG_RESULT([readv(${PROTO})])
+AC_DEFINE_UNQUOTED([READV_SIGNATURE], [${PROTO}],[Description])
+AC_DEFINE_UNQUOTED([READV_ARGNAMES],[${NAMES}],[Argument names])
+
+dnl Find the correct writev prototype on this machine 
+AC_MSG_CHECKING(for correct writev prototype)
+PROTO=
+NAMES='fd, iov, iovcnt'
+for testproto in 'int fd, const struct iovec *iov, int iovcnt' \
+                 'struct pollfd *ufds, nfds_t nfds, int timeout' \
+                 'struct pollfd *ufds, unsigned int nfds, int timeout'
+do
+  if test "${PROTO}" = ""; then
+    AC_TRY_COMPILE([
+      #include <sys/uio.h>
+      ssize_t writev($testproto);
+    ],,[PROTO="$testproto";],)
+  fi
+done
+if test "${PROTO}" = ""; then
+  AC_MSG_ERROR("no match found!")
+fi
+AC_MSG_RESULT([writev(${PROTO})])
+AC_DEFINE_UNQUOTED([WRITEV_SIGNATURE], [${PROTO}],[Description])
+AC_DEFINE_UNQUOTED([WRITEV_ARGNAMES],[${NAMES}],[Argument names])
+
+
+dnl Find the correct pselect prototype on this machine 
+AC_MSG_CHECKING(for correct pselect prototype)
+PROTO=
+NAMES='nfds, readfds, writefds, exceptfds, timeout, sigmask'
+TESTPROTO='int nfds, fd_set * readfds, '
+TESTPROTO="${TESTPROTO}fd_set * writefds, "
+TESTPROTO="${TESTPROTO}fd_set * exceptfds, "
+TESTPROTO="${TESTPROTO}const struct timespec * timeout, "
+TESTPROTO="${TESTPROTO}const sigset_t * sigmask"
+TESTPROTO0=''
+for testproto in "${TESTPROTO}" "${TESTPROTO0}"
+do
+  if test "${PROTO}" = ""; then
+    AC_TRY_COMPILE([
+      #include <sys/time.h>
+      #include <sys/types.h>
+      #include <unistd.h>
+      int pselect($testproto);
+    ],,[PROTO="$testproto";],)
+  fi
+done
+if test "${PROTO}" = ""; then
+  AC_MSG_ERROR("no match found!")
+fi
+  AC_MSG_RESULT([pselect(${PROTO})])
+  AC_DEFINE_UNQUOTED([PSELECT_SIGNATURE], [${PROTO}],[Description])
+  AC_DEFINE_UNQUOTED([PSELECT_ARGNAMES],[${NAMES}],[Argument names])
+
+dnl Find the correct signature for recvfrom
+AC_MSG_CHECKING(for correct recvfrom prototype)
+PROTO=
+TESTPROTO="int s, void * buf, size_t len, int flags, __SOCKADDR_ARG addr, "
+TESTPROTO="${TESTPROTO}socklen_t * addr_len"
+TESTPROTO0="int s, void * buf, size_t len, int flags, "
+TESTPROTO0="${TESTPROTO0}struct sockaddr * __restrict addr, socklen_t * addr_len"
+NAMES='s, buf, len, flags, addr, addr_len'
+for testproto in "${TESTPROTO}" "${TESTPROTO0}"
+do
+  if test "${PROTO}" = ""; then
+    AC_TRY_COMPILE([
+      #include <sys/types.h>
+      #include <sys/socket.h>
+
+      ssize_t recvfrom($testproto);
+    ],,[PROTO="$testproto";],)
+  fi
+done
+if test "${PROTO}" = ""; then
+  AC_MSG_ERROR("no match found!")
+fi
+AC_MSG_RESULT([recvfrom(${PROTO})])
+AC_DEFINE_UNQUOTED(RECVFROM_SIGNATURE, [${PROTO}], [Description])
+AC_DEFINE_UNQUOTED([RECVFROM_ARGNAMES],[${NAMES}],[Argument names])
+
+
+
+case "$host_os" in
+linux*)
+  dnl Find the correct ppoll prototype on this machine 
+  AC_MSG_CHECKING(for correct ppoll prototype)
+  PROTO=
+  NAMES='fds, nfds, timeout, sigmask'
+  TESTPROTO='struct pollfd *fds, nfds_t nfds, '
+  TESTPROTO="${TESTPROTO}const struct timespec *timeout, "
+  TESTPROTO="${TESTPROTO}const __sigset_t *sigmask"
+  for testproto in "${TESTPROTO}"
+  do
+    if test "${PROTO}" = ""; then
+      AC_TRY_COMPILE([
+        #define _GNU_SOURCE
+        #include <sys/poll.h>
+        int ppoll(${testproto});
+      ],,[PROTO="${testproto}";],)
+    fi
+  done
+  if test "${PROTO}" = ""; then
+    AC_MSG_RESULT(not found/supported)
+    AC_DEFINE_UNQUOTED([PPOLL_SIGNATURE], [void],[Description])
+    AC_DEFINE_UNQUOTED([PPOLL_ARGNAMES],[],[Argument names])
+  else
+    AC_MSG_RESULT([ppoll(${PROTO})])
+    AC_DEFINE_UNQUOTED([PPOLL_AVAILABLE], [1],[Description])
+    AC_DEFINE_UNQUOTED([PPOLL_SIGNATURE], [${PROTO}],[Description])
+    AC_DEFINE_UNQUOTED([PPOLL_ARGNAMES],[${NAMES}],[Argument names])
+  fi
+
+  dnl Find the correct sendmmsg prototype on this machine
+  AC_MSG_CHECKING(for correct sendmmsg prototype)
+  PROTO=
+  NAMES='s, msgvec, vlen, flags'
+  for testproto in 'int s, struct mmsghdr *msgvec, unsigned int vlen, int flags' \
+                   ''
+  do
+    if test "${PROTO}" = ""; then
+      AC_TRY_COMPILE([
+        #define _GNU_SOURCE
+        #include <sys/socket.h>
+	#include <stdlib.h>
+      ],[sendmmsg(0, NULL, 0, 0)
+      ],[PROTO="$testproto";],)
+    fi
+  done
+  if test "${PROTO}" = ""; then
+    AC_MSG_RESULT(not found/supported)
+  else
+    AC_MSG_RESULT([sendmmsg(${PROTO})])
+    AC_DEFINE_UNQUOTED(SENDMMSG_SIGNATURE, [${PROTO}], [Description])
+    AC_DEFINE_UNQUOTED([SENDMMSG_ARGNAMES],[${NAMES}],[Argument names])
+    AC_DEFINE_UNQUOTED(SENDMMSG_AVAILABLE, [${PROTO}], [Description])
+  fi
+
+
+  dnl Find the correct recvmmsg prototype on this machine
+  AC_MSG_CHECKING(for correct recvmmsg prototype)
+  PROTO=
+  NAMES='s, msgvec, vlen, flags, timeout'
+  TESTPROTO='int s, struct mmsghdr *msgvec, unsigned int vlen, int flags, '
+  TESTPROTO="${TESTPROTO}const struct timespec *timeout"
+  TESTPROTO0=''
+  for testproto in "${TESTPROTO}" "${TESTPROTO0}"
+  do
+    if test "${PROTO}" = ""; then
+      AC_TRY_COMPILE([
+        #define _GNU_SOURCE
+        #include <sys/socket.h>
+        #include <stdlib.h>
+        int recvmmsg($testproto);
+      ],[recvmmsg(0, NULL, 0, 0, 0)
+      ],[PROTO="$testproto";],)
+    fi
+  done
+  if test "${PROTO}" = ""; then
+    AC_MSG_RESULT(not found/supported)
+  else
+    AC_MSG_RESULT([recvmmsg(${PROTO})])
+    AC_DEFINE_UNQUOTED(RECVMMSG_SIGNATURE, [${PROTO}], [Description])
+    AC_DEFINE_UNQUOTED([RECVMMSG_ARGNAMES],[${NAMES}],[Argument names])
+    AC_DEFINE_UNQUOTED(RECVMMSG_AVAILABLE, [${PROTO}], [Description])
+  fi
+  ;;
+*)
+    AC_DEFINE_UNQUOTED([PPOLL_SIGNATURE], [void],[Description])
+    AC_DEFINE_UNQUOTED([PPOLL_ARGNAMES],[],[Argument names])
+  ;;
+esac
 
 dnl Emit signature for gethostbyname
 PROTO="const char *name"
@@ -528,7 +817,8 @@ AC_DEFINE_UNQUOTED(GETHOSTBYADDR_SIGNATURE, [${PROTO}], [Description])
 AC_DEFINE_UNQUOTED([GETHOSTBYADDR_ARGNAMES],[${NAMES}],[Argument names])
 
 dnl Emit signature for sendto
-PROTO="int s, const void *buf, size_t len, int flags, const struct sockaddr *to, socklen_t tolen"
+PROTO="int s, const void *buf, size_t len, int flags, "
+PROTO="${PROTO}const struct sockaddr *to, socklen_t tolen"
 NAMES='s, buf, len, flags, to, tolen'
 AC_DEFINE_UNQUOTED(SENDTO_SIGNATURE, [${PROTO}], [Description])
 AC_DEFINE_UNQUOTED([SENDTO_ARGNAMES],[${NAMES}],[Argument names])
@@ -538,6 +828,12 @@ PROTO="int s, const struct msghdr *msg, int flags"
 NAMES='s, msg, flags'
 AC_DEFINE_UNQUOTED(SENDMSG_SIGNATURE, [${PROTO}], [Description])
 AC_DEFINE_UNQUOTED([SENDMSG_ARGNAMES],[${NAMES}],[Argument names])
+
+dnl Emit signature for recvmsg
+PROTO="int s, struct msghdr *msg, int flags"
+NAMES='s, msg, flags'
+AC_DEFINE_UNQUOTED(RECVMSG_SIGNATURE, [${PROTO}], [Description])
+AC_DEFINE_UNQUOTED([RECVMSG_ARGNAMES],[${NAMES}],[Argument names])
 
 
 ##############################################################################

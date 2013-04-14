@@ -4,6 +4,15 @@ XXX
 
       https://travis-ci.org/ioerror/torsocks
 
+    o Support sending optimistic data by default
+
+      Configurable in the configuration file by setting 'use_optdata'. When
+      using SOCKS4/4A, torsocks will request data from the application which
+      it will send directly after it sends it's side of the handshake but
+      before it receives confirmation from the server. When using SOCKS5,
+      torsocks will request the data after the authentication method has been
+      negotiated.
+
 Torsocks 1.3
 2013-02-11 Jacob Appelbaum <jacob@appelbaum.net>
 
