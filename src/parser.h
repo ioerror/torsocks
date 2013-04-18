@@ -64,6 +64,5 @@ struct parsedfile {
 int read_config(char *, struct parsedfile *);
 int is_local(struct parsedfile *, struct in_addr *);
 int pick_server(struct parsedfile *, struct serverent **, struct in_addr *, unsigned int port);
-char *strsplit(char *separator, char **text, const char *search);
 
 #endif

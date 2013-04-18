@@ -32,9 +32,6 @@
 #include "common.h"
 #include "dead_pool.h"
 
-int store_pool_entry(dead_pool *pool, char *hostname, struct in_addr *addr);
-void get_next_dead_address(dead_pool *pool, uint32_t *result);
-
 static int
 do_resolve(const char *hostname, uint32_t sockshost, uint16_t socksport,
            uint32_t *result_addr, const void *addr,
@@ -52,7 +49,7 @@ strcasecmpend(const char *s1, const char *s2)
        return strncasecmp(s1+(n1-n2), s2, n2);
 }
 
-dead_pool *
+ATTR_HIDDEN dead_pool *
 init_pool(unsigned int pool_size, struct in_addr deadrange_base, 
     struct in_addr deadrange_mask, char *sockshost, uint16_t socksport)
 {
@@ -138,7 +135,7 @@ init_pool(unsigned int pool_size, struct in_addr deadrange_base,
     return newpool;
 }
 
-int
+ATTR_HIDDEN int
 is_dead_address(dead_pool *pool, uint32_t addr) 
 {
     uint32_t haddr = ntohl(addr);
@@ -148,7 +145,7 @@ is_dead_address(dead_pool *pool, uint32_t addr)
     return (pool->deadrange_base == (haddr & pool->deadrange_mask));
 }
 
-void
+static void
 get_next_dead_address(dead_pool *pool, uint32_t *result)
 {
     *result = htonl(pool->deadrange_base + pool->dead_pos++);
@@ -157,7 +154,19 @@ get_next_dead_address(dead_pool *pool, uint32_t *result)
     }
 }
 
-int
+static int
+search_pool_for_name(dead_pool *pool, const char *name)
+{
+	unsigned int i;
+	for(i=0; i < pool->n_entries; i++){
+		if(strcmp(name, pool->entries[i].name) == 0){
+			return i;
+		}
+	}
+	return -1;
+}
+
+static int
 store_pool_entry(dead_pool *pool, char *hostname, struct in_addr *addr)
 {
   int position = pool->write_pos;
@@ -209,19 +218,7 @@ store_pool_entry(dead_pool *pool, char *hostname, struct in_addr *addr)
   return position;
 }
 
-int 
-search_pool_for_name(dead_pool *pool, const char *name) 
-{
-  unsigned int i;
-  for(i=0; i < pool->n_entries; i++){
-    if(strcmp(name, pool->entries[i].name) == 0){
-      return i;
-    }
-  }
-  return -1;
-}
-
-char *
+ATTR_HIDDEN char *
 get_pool_entry(dead_pool *pool, struct in_addr *addr)
 {
   unsigned int i;
@@ -551,7 +548,7 @@ do_resolve(const char *hostname, uint32_t sockshost, uint16_t socksport,
   return 0;
 }
 
-struct hostent *
+ATTR_HIDDEN struct hostent *
 our_gethostbyaddr(dead_pool *pool, const void *_addr, socklen_t len, int type)
 {
   const struct in_addr *addr=_addr;
@@ -598,7 +595,7 @@ our_gethostbyaddr(dead_pool *pool, const void *_addr, socklen_t len, int type)
 
 }
 
-struct hostent *
+ATTR_HIDDEN struct hostent *
 our_gethostbyname(dead_pool *pool, const char *name)
 {
   int pos;
@@ -699,7 +696,7 @@ free_hostent(struct hostent *he)
     free(he);
 }
 
-int
+ATTR_HIDDEN int
 our_getaddrinfo(dead_pool *pool, const char *node, const char *service, 
                 void *hints, void *res)
 {
@@ -740,7 +737,7 @@ our_getaddrinfo(dead_pool *pool, const char *node, const char *service,
     return ret;
 }
 
-struct hostent *
+ATTR_HIDDEN struct hostent *
 our_getipnodebyname(dead_pool *pool, const char *name, int af, int flags, 
                     int *error_num)
 {
