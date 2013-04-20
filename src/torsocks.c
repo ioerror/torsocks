@@ -157,6 +157,8 @@ void torsocks_init(void)
     realgetipnodebyname = dlsym(lib, "getipnodebyname");
     realsendto = dlsym(lib, "sendto");
     realsendmsg = dlsym(lib, "sendmsg");
+    realsend = dlsym(lib, "send");
+    realrecv = dlsym(lib, "recv");
     dlclose(lib);
     lib = dlopen(LIBC, RTLD_LAZY);
     realclose = dlsym(lib, "close");
@@ -1116,6 +1118,8 @@ int torsocks_sendmmsg_guts(SENDMMSG_SIGNATURE, int (*original_sendmmsg)(SENDMMSG
         return(-1);
     }
 
+    show_msg(MSGTEST, "Got sendmmsg request\n");
+
     return original_sendmmsg(s, msgvec, vlen, flags);
 }
 #endif /* SENDMMSG_AVAILABLE */
@@ -1129,6 +1133,8 @@ int torsocks_recvmmsg_guts(RECVMMSG_SIGNATURE, int (*original_recvmmsg)(RECVMMSG
         return(-1);
     }
 
+    show_msg(MSGTEST, "Got recvmmsg request\n");
+
     return original_recvmmsg(s, msgvec, vlen, flags, timeout);
 }
 #endif /* RECVMMSG_AVAILABLE */
@@ -1141,6 +1147,8 @@ ssize_t torsocks_recvfrom_guts(RECVFROM_SIGNATURE, ssize_t(*original_recvfrom)(R
         return(-1);
     }
 
+    show_msg(MSGTEST, "Got recvfrom request\n");
+
     return (ssize_t) original_recvfrom(s, buf, len, flags, addr, addr_len);
 }
 
@@ -1149,7 +1157,7 @@ ssize_t torsocks_recvmsg_guts(RECVMSG_SIGNATURE, ssize_t(*original_recvmsg)(RECV
     /* If the real recvmsg doesn't exist, we're stuffed */
     if (original_recvmsg == NULL) {
         show_msg(MSGERR, "Unresolved symbol: recvmsg\n");
-        return(-1);
+        return -1;
     }
 
     return (ssize_t) original_recvmsg(s, msg, flags);
@@ -1157,10 +1165,25 @@ ssize_t torsocks_recvmsg_guts(RECVMSG_SIGNATURE, ssize_t(*original_recvmsg)(RECV
 
 ssize_t torsocks_write_guts(WRITE_SIGNATURE, ssize_t(*original_write)(WRITE_SIGNATURE))
 {
+    struct connreq *conn;
+    
     /* If the real write doesn't exist, we're stuffed */
     if (original_write == NULL) {
         show_msg(MSGERR, "Unresolved symbol: write\n");
-        return(-1);
+        return -1;
+    }
+
+    show_msg(MSGTEST, "Got write request\n");
+
+    /* Are we handling this connect? */
+    if ((conn = find_socks_request(fd, 1))) {
+        if (conn->state != DONE &&
+            (!conn->using_optdata ||
+             (conn->using_optdata &&
+             ((conn->state != SENTV4REQ) && (conn->state != SENTV5CONNECT))))) {
+            errno = ENOTCONN;
+            return -1;
+        }
     }
 
     return original_write(fd, buf, count);
@@ -1168,21 +1191,50 @@ ssize_t torsocks_write_guts(WRITE_SIGNATURE, ssize_t(*original_write)(WRITE_SIGN
 
 ssize_t torsocks_read_guts(READ_SIGNATURE, ssize_t(*original_read)(READ_SIGNATURE))
 {
+    struct connreq *conn;
+    
     /* If the real read doesn't exist, we're stuffed */
     if (original_read == NULL) {
         show_msg(MSGERR, "Unresolved symbol: read\n");
         return(-1);
     }
 
+    show_msg(MSGTEST, "Got read request\n");
+
+    /* Are we handling this connect? */
+    if ((conn = find_socks_request(fd, 1))) {
+	/* Complete SOCKS handshake if necessary */
+	handle_request(conn);
+
+        if (conn->state != DONE) {
+            errno = ENOTCONN;
+            return(-1);
+        }
+    }
     return original_read(fd, buf, count);
 }
 
 ssize_t torsocks_send_guts(SEND_SIGNATURE, ssize_t(*original_send)(SEND_SIGNATURE))
 {
+    struct connreq *conn;
+    
     /* If the real send doesn't exist, we're stuffed */
     if (original_send == NULL) {
         show_msg(MSGERR, "Unresolved symbol: send\n");
         return(-1);
+    }
+
+    show_msg(MSGTEST, "Got send request\n");
+
+    /* Are we handling this connect? */
+    if ((conn = find_socks_request(fd, 1))) {
+        if (conn->state != DONE &&
+            (!conn->using_optdata ||
+             (conn->using_optdata &&
+             ((conn->state != SENTV4REQ) && (conn->state != SENTV5CONNECT))))) {
+            errno = ENOTCONN;
+            return(-1);
+        }
     }
 
     return original_send(fd, buf, count, flags);
@@ -1190,10 +1242,25 @@ ssize_t torsocks_send_guts(SEND_SIGNATURE, ssize_t(*original_send)(SEND_SIGNATUR
 
 ssize_t torsocks_recv_guts(RECV_SIGNATURE, ssize_t(*original_recv)(RECV_SIGNATURE))
 {
+    struct connreq *conn;
+    
     /* If the real recv doesn't exist, we're stuffed */
     if (original_recv == NULL) {
         show_msg(MSGERR, "Unresolved symbol: recv\n");
         return(-1);
+    }
+
+    show_msg(MSGTEST, "Got recv request\n");
+
+    /* Are we handling this connect? */
+    if ((conn = find_socks_request(fd, 1))) {
+	/* Complete SOCKS handshake if necessary */
+	handle_request(conn);
+
+        if (conn->state != DONE) {
+            errno = ENOTCONN;
+            return(-1);
+        }
     }
 
     return original_recv(fd, buf, count, flags);
@@ -1207,15 +1274,32 @@ ssize_t torsocks_readv_guts(READV_SIGNATURE, ssize_t(*original_readv)(READV_SIGN
         return(-1);
     }
 
+    show_msg(MSGTEST, "Got readv request\n");
+
     return original_readv(fd, iov, iovcnt);
 }
 
 ssize_t torsocks_writev_guts(WRITEV_SIGNATURE, ssize_t(*original_writev)(WRITEV_SIGNATURE))
 {
+    struct connreq *conn;
+
     /* If the real writev doesn't exist, we're stuffed */
     if (original_writev == NULL) {
         show_msg(MSGERR, "Unresolved symbol: writev\n");
         return(-1);
+    }
+
+    show_msg(MSGTEST, "Got writev request\n");
+
+    /* Are we handling this connect? */
+    if ((conn = find_socks_request(fd, 1))) {
+        if (conn->state != DONE &&
+            (!conn->using_optdata ||
+             (conn->using_optdata &&
+             ((conn->state != SENTV4REQ) && (conn->state != SENTV5CONNECT))))) {
+            errno = ENOTCONN;
+            return -1;
+        }
     }
 
     return original_writev(fd, iov, iovcnt);
@@ -1230,6 +1314,8 @@ int torsocks_ppoll_guts(PPOLL_SIGNATURE, int(*original_ppoll)(PPOLL_SIGNATURE))
         return(-1);
     }
 
+    show_msg(MSGTEST, "Got ppoll request\n");
+
     return original_ppoll(fds, nfds, timeout, sigmask);
 }
 #endif /* PPOLL_AVAILABLE */
@@ -1241,6 +1327,8 @@ int torsocks_pselect_guts(PSELECT_SIGNATURE, int(*original_pselect)(PSELECT_SIGN
         show_msg(MSGERR, "Unresolved symbol: pselect\n");
         return(-1);
     }
+
+    show_msg(MSGTEST, "Got pselect request\n");
 
     return original_pselect(nfds, readfds, writefds, exceptfds, timeout, sigmask);
 }
