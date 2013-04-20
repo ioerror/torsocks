@@ -41,6 +41,12 @@
 #define DNS_FUNCD32 FUNCD32
 #define DNS_FUNCD64 FUNCD64
 
+#ifdef SENDMMSG_AVAILABLE
+#define DNS_FUNCDL(e,r,s,n,b,m)            PATCH_TABLE_EXPANSION(e,r,s,n,b,m)
+#else
+#define DNS_FUNCDL(e,r,s,n,b,m)            EMPTY_FUNC(e,r,s,n,b,m)
+#endif /* SENDMMSG_AVAILABLE */
+
 #define EMPTY_FUNC(e,r,s,n,b,m)
 
 #if defined(__APPLE__) || defined(__darwin__)
@@ -95,6 +101,18 @@ DNS_FUNCD32 (ERR,    ssize_t,            SENDMSG_,           sendmsg_unix2003,  
 DNS_FUNCD32 (ERR,    ssize_t,            SENDMSG_,           sendmsg_nocancel_unix2003,     sendmsg,             "sendmsg$NOCANCEL$UNIX2003")
 DNS_FUNCD64 (ERR,    ssize_t,            SENDMSG_,           sendmsg_nocancel,              sendmsg,             "sendmsg$NOCANCEL")
 
+DNS_FUNCDL  (ERR,    int,                SENDMMSG_,          sendmmsg,                      sendmmsg,            "sendmmsg")
+
+DNS_FUNCDL  (ERR,    int,                RECVMMSG_,          recvmmsg,                      recvmmsg,            "recvmmsg")
+
+DNS_FUNC    (ERR,    ssize_t,            RECVFROM_,          recvfrom,                      recvfrom,            "recvfrom")
+
+DNS_FUNC    (ERR,    ssize_t,            RECVMSG_,           recvmsg,                       recvmsg,             "recvmsg")
+
+FUNC        (ERR,    ssize_t,            SEND_,              send,                          send,                "send")
+
+FUNC        (ERR,    ssize_t,            RECV_,              recv,                          recv,                "recv")
+
 FUNC        (ERR,    int,                CONNECT_,           connect,                       connect,             "connect")
 FUNCD32     (ERR,    int,                CONNECT_,           connect_unix2003,              connect,             "connect$UNIX2003")
 FUNCD32     (ERR,    int,                CONNECT_,           connect_nocancel_unix2003,     connect,             "connect$NOCANCEL$UNIX2003")
@@ -123,3 +141,18 @@ FUNCD64     (ERR,    int,                CLOSE_,             close_nocancel,    
 
 FUNC        (ERR,    int,                GETPEERNAME_,       getpeername,                   getpeername,         "getpeername")
 FUNCD32     (ERR,    int,                GETPEERNAME_,       getpeername_unix2003,          getpeername,         "getpeername$UNIX2003")
+
+FUNC        (ERR,    ssize_t,            READ_,              read,                          read,                "read")
+
+FUNC        (ERR,    ssize_t,            READV_,             readv,                         readv,               "readv")
+
+FUNC        (ERR,    ssize_t,            WRITE_,             write,                         write,               "write")
+
+FUNC        (ERR,    ssize_t,            WRITEV_,            writev,                        writev,               "writev")
+
+FUNC        (ERR,    int,                PSELECT_,           pselect,                       pselect,              "pselect")
+
+#if PPOLL_AVAILABLE
+FUNC        (ERR,    int,                PPOLL_,             ppoll,                         ppoll,                "ppoll")
+#endif /* PPOLL_AVAILABLE */
+/* XXX Are pread/pwrite/preadv/pwritev usable with no offset?? */

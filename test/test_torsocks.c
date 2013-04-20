@@ -141,6 +141,7 @@ static int icmp_test()
     return(0);
 }
 
+#if 0
 static char *txtquery(const char *domain, unsigned int *ttl)
 {
     unsigned char answer[PACKETSZ], *answend, *pt;
@@ -236,6 +237,7 @@ static char *txtquery(const char *domain, unsigned int *ttl)
 
     return txt;
 }
+#endif
 
 static int res_tests(char *ip, char *test) {
     unsigned char dnsreply[1024];
