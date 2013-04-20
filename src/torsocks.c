@@ -444,7 +444,7 @@ int torsocks_connect_guts(CONNECT_SIGNATURE, int (*original_connect)(CONNECT_SIG
 }
 
 /* Common functionality of select and pselect */
-inline int torsocks_select_common(int nfds, fd_set * writefds, fd_set * readfds, 
+static int select_common(int nfds, fd_set * writefds, fd_set * readfds, 
                  fd_set * exceptfds, int (*original_select)(SELECT_SIGNATURE),
                  int (*original_pselect)(PSELECT_SIGNATURE), struct selectopts opts)
 {
@@ -654,15 +654,17 @@ int torsocks_select_guts(SELECT_SIGNATURE, int (*original_select)(SELECT_SIGNATU
     if (!monitoring)
         return(original_select(n, readfds, writefds, exceptfds, timeout));
     
+    memset(&opts, 0, sizeof(opts));
     opts.is_select = 1;
     opts.select_timeout = timeout;
-    nevents = torsocks_select_common(n, readfds, writefds, exceptfds, original_select, NULL, opts);
+    opts.sigmask = NULL;
+    nevents = select_common(n, readfds, writefds, exceptfds, original_select, NULL, opts);
     
     return(nevents);
 }
 
 /* Common functionality of poll and ppoll */
-inline int torsocks_poll_common(struct pollfd * ufds, nfds_t nfds, 
+int poll_common(struct pollfd * ufds, nfds_t nfds, 
                  int (*original_poll)(POLL_SIGNATURE),
                  int (*original_ppoll)(PPOLL_SIGNATURE), struct pollopts opts)
 {
@@ -840,9 +842,11 @@ int torsocks_poll_guts(POLL_SIGNATURE, int (*original_poll)(POLL_SIGNATURE))
     if (!monitoring)
         return(original_poll(ufds, nfds, timeout));
 
+    memset(&opts, 0, sizeof(opts));
     opts.is_poll = 1;
     opts.poll_timeout = timeout;
-    return torsocks_poll_common(ufds, nfds, original_poll, NULL, opts);
+    opts.sigmask = NULL;
+    return poll_common(ufds, nfds, original_poll, NULL, opts);
 }
 
 int torsocks_close_guts(CLOSE_SIGNATURE, int (*original_close)(CLOSE_SIGNATURE))
@@ -1464,9 +1468,10 @@ int torsocks_ppoll_guts(PPOLL_SIGNATURE, int(*original_ppoll)(PPOLL_SIGNATURE))
     if (!monitoring)
         return(original_ppoll(fds, nfds, timeout, sigmask));
 
+    memset(&opts, 0, sizeof(opts));
     opts.ppoll_timeout_ts = timeout;
     opts.sigmask = sigmask;
-    return torsocks_poll_common(fds, nfds, NULL, original_ppoll, opts);
+    return poll_common(fds, nfds, NULL, original_ppoll, opts);
 }
 #endif /* PPOLL_AVAILABLE */
 
@@ -1480,7 +1485,7 @@ int torsocks_pselect_guts(PSELECT_SIGNATURE, int(*original_pselect)(PSELECT_SIGN
     /* If the real pselect doesn't exist, we're stuffed */
     if (original_pselect == NULL) {
         show_msg(MSGERR, "Unresolved symbol: pselect\n");
-        return(-1);
+        return -1;
     }
 
     show_msg(MSGTEST, "Got pselect request\n");
@@ -1489,7 +1494,7 @@ int torsocks_pselect_guts(PSELECT_SIGNATURE, int(*original_pselect)(PSELECT_SIGN
      * leave here */
     if (!requests) {
         show_msg(MSGDEBUG, "No requests waiting, calling real pselect\n");
-        return(original_pselect(nfds, readfds, writefds, exceptfds, timeout, sigmask));
+        return original_pselect(nfds, readfds, writefds, exceptfds, timeout, sigmask);
     }
 
     show_msg(MSGTEST, "Intercepted call to pselect\n");
@@ -1513,11 +1518,12 @@ int torsocks_pselect_guts(PSELECT_SIGNATURE, int(*original_pselect)(PSELECT_SIGN
     }
 
     if (!monitoring)
-        return(original_pselect(nfds, readfds, writefds, exceptfds, timeout, sigmask));
+        return original_pselect(nfds, readfds, writefds, exceptfds, timeout, sigmask);
     
-    opts.is_select = 0;
+    memset(&opts, 0, sizeof(opts));
     opts.pselect_timeout = timeout;
-    nevents = torsocks_select_common(nfds, readfds, writefds, exceptfds, NULL, original_pselect, opts);
+    opts.sigmask = sigmask;
+    nevents = select_common(nfds, readfds, writefds, exceptfds, NULL, original_pselect, opts);
     
-    return(nevents);
+    return nevents;
 }
