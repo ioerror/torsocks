@@ -452,8 +452,8 @@ static int select_common(int nfds, fd_set * writefds, fd_set * readfds,
     int setevents = 0;
     struct connreq *conn, *nextconn;
     fd_set mywritefds, myreadfds, myexceptfds;
-
-    /* This is our [p]select loop. In it we repeatedly call [p]select(). We
+    int need_optdata;
+     /* This is our [p]select loop. In it we repeatedly call [p]select(). We
       * pass select the same fdsets as provided by the caller except we
       * modify the fdsets for the sockets we're managing to get events
       * we're interested in (while negotiating with the socks server). When
@@ -525,6 +525,15 @@ static int select_common(int nfds, fd_set * writefds, fd_set * readfds,
             if ((conn->state == FAILED) || (conn->state == DONE))
                 continue;
             show_msg(MSGDEBUG, "Checking socket %d for events\n", conn->sockid);
+
+            need_optdata = conn->using_optdata &&
+                           ((conn->state == SENTV4REQ) ||
+                            (conn->state == SENTV5CONNECT));
+           if(need_optdata){
+	       nevents++;
+	       nevents--;
+	   }
+
             /* Clear all the events on the socket (if any), we'll reset
               * any that are necessary later. */
             setevents = 0;
@@ -554,14 +563,19 @@ static int select_common(int nfds, fd_set * writefds, fd_set * readfds,
 
             if (setevents & EXCEPT)
                 conn->state = FAILED;
-            else
+            else if (need_optdata && (setevents & WRITE)) {
+	        show_msg(MSGDEBUG, "Wanting to send optdata.\n");
+            } else if (need_optdata && (setevents & READ)) {
+	        show_msg(MSGDEBUG, "Wanting to receive optdata.\n");
+            } else {
                 handle_request(conn);
 
-            /* If the connection hasn't failed or completed there is nothing
-              * to report to the client */
-            if ((conn->state != FAILED) &&
-                (conn->state != DONE))
-                continue;
+                /* If the connection hasn't failed or completed there is nothing
+                 * to report to the client */
+                if ((conn->state != FAILED) &&
+                    (conn->state != DONE))
+                    continue;
+            }
 
             /* Ok, the connection is completed, for good or for bad. We now
               * hand back the relevant events to the caller. We don't delete the
@@ -571,6 +585,7 @@ static int select_common(int nfds, fd_set * writefds, fd_set * readfds,
             if (conn->state == FAILED) {
                 /* Damn, the connection failed. Whatever the events the socket
                 * was selected for we flag */
+		show_msg(MSGDEBUG, "In FAILED\n");
                 if (conn->selectevents & EXCEPT) {
                     FD_SET(conn->sockid, &myexceptfds);
                     nevents++;
@@ -589,18 +604,27 @@ static int select_common(int nfds, fd_set * writefds, fd_set * readfds,
                 * We don't delete the request so that hopefully we can
                 * return the error on the socket if they call connect() on it */
             } else if (conn->state == DONE) {
+		show_msg(MSGDEBUG, "In DONE\n");
                 kill_socks_request(conn);
             } else {
-                /* The connection is done,  if the client selected for
-                * writing we can go ahead and signal that now (since the socket must
-                * be ready for writing), otherwise we'll just let the select loop
-                * come around again (since we can't flag it for read, we don't know
-                * if there is any data to be read and can't be bothered checking) */
+                /* The connection is done or we're requesting optimistic data, if the
+                 * client selected for writing or reading we can go ahead and signal
+		 * that now (since the socket must be ready for it), otherwise we'll
+		 * just let the select loop come around again.
+                 */
+		show_msg(MSGDEBUG, "In else\n");
                 if (conn->selectevents & WRITE) {
                     FD_SET(conn->sockid, &mywritefds);
                     nevents++;
+		    show_msg(MSGDEBUG, "Wanting write, increasing nevents\n");
+                }
+                if (conn->selectevents & READ) {
+                    FD_SET(conn->sockid, &myreadfds);
+                    nevents++;
+		    show_msg(MSGDEBUG, "Wanting read, increasing nevents\n");
                 }
             }
+            show_msg(MSGDEBUG, "End of loop for socket %d, nevents = %d\n", conn->sockid, nevents);
         }
     } while (nevents == 0);
 
@@ -647,6 +671,7 @@ int torsocks_select_guts(SELECT_SIGNATURE, int (*original_select)(SELECT_SIGNATU
         conn->selectevents |= (exceptfds ? (FD_ISSET(conn->sockid, exceptfds) ? EXCEPT : 0) : 0);
         if (conn->selectevents) {
             show_msg(MSGDEBUG, "Socket %d was set for events\n", conn->sockid);
+	    show_msg(MSGDEBUG, "Watching for %d %d %d\n", writefds, readfds, exceptfds);
             monitoring = 1;
         }
     }
