@@ -103,6 +103,7 @@ struct connreq *new_socks_request(int sockid, struct sockaddr_in *connaddr,
     newconn->sockid = sockid;
     newconn->state = UNSTARTED;
     newconn->path = path;
+    newconn->using_optdata = path->use_optdata;
     memcpy(&(newconn->connaddr), connaddr, sizeof(newconn->connaddr));
     memcpy(&(newconn->serveraddr), serveraddr, sizeof(newconn->serveraddr));
     newconn->next = requests;
@@ -216,6 +217,14 @@ int handle_request(struct connreq *conn)
               break;
         }
         conn->err = errno;
+
+        if (conn->using_optdata && ((conn->state == SENTV4REQ) ||
+                                    (conn->state == SENTV5CONNECT))) {
+            show_msg(MSGDEBUG, "Handle loop returning and requesting optimistic data "
+                               "for socket %d in state %d, returning %d\n",
+	                       conn->sockid, conn->state, rc);
+            return(rc);
+        }
     }
 
     if (i == 20)
@@ -425,7 +434,7 @@ static int send_buffer(struct connreq *conn)
 
     show_msg(MSGDEBUG, "Writing to server (sending %d bytes)\n", conn->datalen);
     while ((rc == 0) && (conn->datadone != conn->datalen)) {
-        rc = send(conn->sockid, conn->buffer + conn->datadone,
+        rc = realsend(conn->sockid, conn->buffer + conn->datadone,
                   conn->datalen - conn->datadone, 0);
         if (rc > 0) {
             conn->datadone += rc;
@@ -451,7 +460,7 @@ static int recv_buffer(struct connreq *conn)
 
     show_msg(MSGDEBUG, "Reading from server (expecting %d bytes)\n", conn->datalen);
     while ((rc == 0) && (conn->datadone != conn->datalen)) {
-          rc = recv(conn->sockid, conn->buffer + conn->datadone,
+          rc = realrecv(conn->sockid, conn->buffer + conn->datadone,
                     conn->datalen - conn->datadone, 0);
           if (rc > 0) {
               conn->datadone += rc;

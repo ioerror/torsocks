@@ -56,6 +56,7 @@ static int handle_tordns_deadpool_range(struct parsedfile *, int, const char *);
 static int handle_tordns_cache_size(struct parsedfile *, char *);
 static int handle_defuser(struct parsedfile *, int, char *);
 static int handle_defpass(struct parsedfile *, int, char *);
+static int handle_optdata(struct parsedfile *, int, char *);
 static int make_netent(char *value, struct netent **ent);
 
 int read_config (char *filename, struct parsedfile *config) {
@@ -91,6 +92,10 @@ int read_config (char *filename, struct parsedfile *config) {
         show_msg(MSGERR, "Could not open socks configuration file "
                 "(%s) errno (%d), assuming sensible defaults for Tor.\n", filename, errno);
         memset(&(config->defaultserver), 0x0, sizeof(config->defaultserver));
+
+        /* Enable optimistic data by default */
+        config->defaultserver.use_optdata = 1;
+
         check_server(&(config->defaultserver));
         handle_local(config, 0, "127.0.0.0/255.0.0.0");
         handle_local(config, 0, "10.0.0.0/255.0.0.0");
@@ -100,6 +105,9 @@ int read_config (char *filename, struct parsedfile *config) {
         rc = 1; /* Severe errors reading configuration */
     } else {
         memset(&(config->defaultserver), 0x0, sizeof(config->defaultserver));
+
+        /* Enable optimistic data by default */
+        config->defaultserver.use_optdata = 1;
 
         while (NULL != fgets(line, MAXLINE, conf)) {
             /* This line _SHOULD_ end in \n so we  */
@@ -156,6 +164,11 @@ static int check_server(struct serverent *server) {
         server->type = 4;
     }
 
+    /* Default to using optimistic data */
+    if (server->use_optdata == -1) {
+        server->use_optdata = 1;
+    }
+    
     return(0);
 }
 
@@ -203,6 +216,8 @@ static int handle_line(struct parsedfile *config, char *line, int lineno) {
                 handle_defuser(config, lineno, words[2]);
             } else if (!strcmp(words[0], "default_pass")) {
                 handle_defpass(config, lineno, words[2]);
+            } else if (!strcmp(words[0], "use_optdata")) {
+                handle_optdata(config, lineno, words[2]);
             } else if (!strcmp(words[0], "local")) {
                 handle_local(config, lineno, words[2]);
             } else if (!strcmp(words[0], "tordns_enable")) {
@@ -275,6 +290,7 @@ static int handle_path(struct parsedfile *config, int lineno, int nowords, char 
         memset(newserver, 0x0, sizeof(*newserver));
         newserver->next = config->paths;
         newserver->lineno = lineno;
+        newserver->use_optdata = 1;
         config->paths = newserver;
         currentcontext = newserver;
     }
@@ -488,6 +504,13 @@ static int handle_flag(char *value)
     } else {
         return -1;
     }
+}
+
+static int handle_optdata(struct parsedfile *config, int lineno, char *value) {
+
+    currentcontext->use_optdata = handle_flag(value);
+
+    return 0;
 }
 
 static int handle_tordns_enabled(struct parsedfile *config, int lineno,
@@ -821,7 +844,9 @@ int pick_server(struct parsedfile *config, struct serverent **ent,
                 (!net->startport || 
                 ((net->startport <= port) && (net->endport >= port))))  
             {
-                show_msg(MSGDEBUG, "This server can reach target\n");
+                show_msg(MSGDEBUG, "This server can reach target and %s\n",
+		         ((*ent)->use_optdata ? "supports optimistic data" :
+                                       "does not support optimistic data"));
                     /* Found the net, return */
                     return(0);
             }
@@ -831,6 +856,9 @@ int pick_server(struct parsedfile *config, struct serverent **ent,
     }
 
     *ent = &(config->defaultserver);
+    show_msg(MSGDEBUG, "Using the default server for this connection, it %s\n",
+             ((*ent)->use_optdata ? "supports optimistic data" :
+                           "does not support optimistic data"));
 
     return(0);
 }
