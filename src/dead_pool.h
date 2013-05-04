@@ -27,6 +27,8 @@
 extern int (*realconnect)(CONNECT_SIGNATURE);
 extern int (*realclose)(CLOSE_SIGNATURE);
 extern int (*realgetaddrinfo)(GETADDRINFO_SIGNATURE);
+extern ssize_t (*realsend)(SEND_SIGNATURE);
+extern ssize_t (*realrecv)(RECV_SIGNATURE);
 
 struct struct_pool_ent {
   unsigned int ip;

@@ -37,6 +37,7 @@ struct serverent {
     char *defuser;            /* Default username for this socks server */
     char *defpass;            /* Default password for this socks server */
     struct netent *reachnets; /* Linked list of nets from this server */
+    int use_optdata;          /* Use optimistic data */
     struct serverent *next;   /* Pointer to next server entry */
 };
 

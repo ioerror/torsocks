@@ -92,6 +92,25 @@ static struct parsedfile config;
 static int suid = 0;
 static char *conffile = NULL;
 
+struct selectopts {
+  int is_select;
+  union {
+    struct timeval * select_timeout;
+    const struct timespec * pselect_timeout;
+  };
+  const sigset_t * sigmask;
+};
+
+struct pollopts {
+  int is_poll;
+  union {
+    int poll_timeout;
+    const struct timespec * ppoll_timeout_ts;
+  };
+  const sigset_t * sigmask;
+};
+
+
 /* Exported Function Prototypes */
 void __attribute__ ((constructor)) torsocks_init(void);
 
@@ -157,6 +176,8 @@ void torsocks_init(void)
     realgetipnodebyname = dlsym(lib, "getipnodebyname");
     realsendto = dlsym(lib, "sendto");
     realsendmsg = dlsym(lib, "sendmsg");
+    realsend = dlsym(lib, "send");
+    realrecv = dlsym(lib, "recv");
     dlclose(lib);
     lib = dlopen(LIBC, RTLD_LAZY);
     realclose = dlsym(lib, "close");
@@ -285,7 +306,7 @@ int torsocks_connect_guts(CONNECT_SIGNATURE, int (*original_connect)(CONNECT_SIG
     }
 
     /* If this is an INET6, we'll refuse it. */
-    if ((connaddr->sin_family == AF_INET6)) {
+    if (connaddr->sin_family == AF_INET6) {
        show_msg(MSGERR, "connect: Connection is IPv6: rejecting.\n");
        errno = EAFNOSUPPORT;
        return -1;
@@ -422,46 +443,17 @@ int torsocks_connect_guts(CONNECT_SIGNATURE, int (*original_connect)(CONNECT_SIG
     }
 }
 
-int torsocks_select_guts(SELECT_SIGNATURE, int (*original_select)(SELECT_SIGNATURE))
+/* Common functionality of select and pselect */
+static int select_common(int nfds, fd_set * writefds, fd_set * readfds, 
+                 fd_set * exceptfds, int (*original_select)(SELECT_SIGNATURE),
+                 int (*original_pselect)(PSELECT_SIGNATURE), struct selectopts opts)
 {
     int nevents = 0;
-    int rc = 0;
     int setevents = 0;
-    int monitoring = 0;
     struct connreq *conn, *nextconn;
     fd_set mywritefds, myreadfds, myexceptfds;
-
-    /* If we're not currently managing any requests we can just
-     * leave here */
-    if (!requests) {
-        show_msg(MSGDEBUG, "No requests waiting, calling real select\n");
-        return(original_select(n, readfds, writefds, exceptfds, timeout));
-    }
-
-    show_msg(MSGTEST, "Intercepted call to select\n");
-    show_msg(MSGDEBUG, "Intercepted call to select with %d fds, "
-              "0x%08x 0x%08x 0x%08x, timeout %08x\n", n,
-              readfds, writefds, exceptfds, timeout);
-
-    for (conn = requests; conn != NULL; conn = conn->next) {
-        if ((conn->state == FAILED) || (conn->state == DONE))
-            continue;
-        conn->selectevents = 0;
-        show_msg(MSGDEBUG, "Checking requests for socks enabled socket %d\n",
-                 conn->sockid);
-        conn->selectevents |= (writefds ? (FD_ISSET(conn->sockid, writefds) ? WRITE : 0) : 0);
-        conn->selectevents |= (readfds ? (FD_ISSET(conn->sockid, readfds) ? READ : 0) : 0);
-        conn->selectevents |= (exceptfds ? (FD_ISSET(conn->sockid, exceptfds) ? EXCEPT : 0) : 0);
-        if (conn->selectevents) {
-            show_msg(MSGDEBUG, "Socket %d was set for events\n", conn->sockid);
-            monitoring = 1;
-        }
-    }
-
-    if (!monitoring)
-        return(original_select(n, readfds, writefds, exceptfds, timeout));
-
-    /* This is our select loop. In it we repeatedly call select(). We
+    int need_optdata;
+     /* This is our [p]select loop. In it we repeatedly call [p]select(). We
       * pass select the same fdsets as provided by the caller except we
       * modify the fdsets for the sockets we're managing to get events
       * we're interested in (while negotiating with the socks server). When
@@ -489,6 +481,9 @@ int torsocks_select_guts(SELECT_SIGNATURE, int (*original_select)(SELECT_SIGNATU
             if ((conn->state == FAILED) || (conn->state == DONE) ||
                 (conn->selectevents == 0))
                 continue;
+
+	    show_msg(MSGDEBUG, "Found our request, %x\n", conn);
+
             /* We always want to know about socket exceptions */
             FD_SET(conn->sockid, &myexceptfds);
             /* If we're waiting for a connect or to be able to send
@@ -499,13 +494,26 @@ int torsocks_select_guts(SELECT_SIGNATURE, int (*original_select)(SELECT_SIGNATU
                 FD_CLR(conn->sockid,&mywritefds);
             /* If we're waiting to receive data we want to get
               * read events */
-            if (conn->state == RECEIVING)
+            if (conn->state == RECEIVING || conn->state == SENTV4REQ ||
+                conn->state == SENTV5CONNECT || conn->state == CONNECTING)
                 FD_SET(conn->sockid,&myreadfds);
             else
                 FD_CLR(conn->sockid,&myreadfds);
+
+            show_msg(MSGDEBUG, "Events on socket are read: %d, "
+                               "write %d, except %d\n",
+                               (FD_ISSET(conn->sockid, &myreadfds) ? 1 : 0),
+                               (FD_ISSET(conn->sockid, &mywritefds) ? 1 : 0),
+                               (FD_ISSET(conn->sockid, &myexceptfds) ? 1 : 0));
         }
 
-        nevents = original_select(n, &myreadfds, &mywritefds, &myexceptfds, timeout);
+        if (opts.is_select)
+          nevents = original_select(nfds, &myreadfds, &mywritefds, &myexceptfds, opts.select_timeout);
+        else
+          nevents = original_pselect(nfds, &myreadfds, &mywritefds, &myexceptfds, opts.pselect_timeout, opts.sigmask);
+        
+        show_msg(MSGDEBUG, "%s returned with %d\n", (opts.is_select ? "select" : "pselect"), nevents);
+
         /* If there were no events we must have timed out or had an error */
         if (nevents <= 0)
             break;
@@ -517,6 +525,11 @@ int torsocks_select_guts(SELECT_SIGNATURE, int (*original_select)(SELECT_SIGNATU
             if ((conn->state == FAILED) || (conn->state == DONE))
                 continue;
             show_msg(MSGDEBUG, "Checking socket %d for events\n", conn->sockid);
+
+            need_optdata = conn->using_optdata &&
+                           ((conn->state == SENTV4REQ) ||
+                            (conn->state == SENTV5CONNECT));
+
             /* Clear all the events on the socket (if any), we'll reset
               * any that are necessary later. */
             setevents = 0;
@@ -546,14 +559,19 @@ int torsocks_select_guts(SELECT_SIGNATURE, int (*original_select)(SELECT_SIGNATU
 
             if (setevents & EXCEPT)
                 conn->state = FAILED;
-            else
-                rc = handle_request(conn);
+            else if (need_optdata && (setevents & WRITE)) {
+                show_msg(MSGDEBUG, "Wanting to send optdata.\n");
+            } else if (need_optdata && (setevents & READ)) {
+                show_msg(MSGDEBUG, "Wanting to receive optdata.\n");
+            } else {
+                handle_request(conn);
 
-            /* If the connection hasn't failed or completed there is nothing
-              * to report to the client */
-            if ((conn->state != FAILED) &&
-                (conn->state != DONE))
-                continue;
+                /* If the connection hasn't failed or completed there is nothing
+                 * to report to the client */
+                if ((conn->state != FAILED) &&
+                    (conn->state != DONE))
+                    continue;
+            }
 
             /* Ok, the connection is completed, for good or for bad. We now
               * hand back the relevant events to the caller. We don't delete the
@@ -580,17 +598,26 @@ int torsocks_select_guts(SELECT_SIGNATURE, int (*original_select)(SELECT_SIGNATU
                 * leaves us a bit hamstrung.
                 * We don't delete the request so that hopefully we can
                 * return the error on the socket if they call connect() on it */
+            } else if (conn->state == DONE) {
+                kill_socks_request(conn);
             } else {
-                /* The connection is done,  if the client selected for
-                * writing we can go ahead and signal that now (since the socket must
-                * be ready for writing), otherwise we'll just let the select loop
-                * come around again (since we can't flag it for read, we don't know
-                * if there is any data to be read and can't be bothered checking) */
+                /* The connection is done or we're requesting optimistic data, if the
+                 * client selected for writing or reading we can go ahead and signal
+                 * that now (since the socket must be ready for it), otherwise we'll
+                 * just let the select loop come around again.
+                 */
                 if (conn->selectevents & WRITE) {
                     FD_SET(conn->sockid, &mywritefds);
                     nevents++;
+                    show_msg(MSGDEBUG, "Wanting write, increasing nevents\n");
+                }
+                if (conn->selectevents & READ) {
+                    FD_SET(conn->sockid, &myreadfds);
+                    nevents++;
+                    show_msg(MSGDEBUG, "Wanting read, increasing nevents\n");
                 }
             }
+            show_msg(MSGDEBUG, "End of loop for socket %d, nevents = %d\n", conn->sockid, nevents);
         }
     } while (nevents == 0);
 
@@ -604,80 +631,114 @@ int torsocks_select_guts(SELECT_SIGNATURE, int (*original_select)(SELECT_SIGNATU
     if (exceptfds)
         memcpy(exceptfds, &myexceptfds, sizeof(myexceptfds));
 
-    return(nevents);
+    return nevents;
 }
 
-int torsocks_poll_guts(POLL_SIGNATURE, int (*original_poll)(POLL_SIGNATURE))
+int torsocks_select_guts(SELECT_SIGNATURE, int (*original_select)(SELECT_SIGNATURE))
 {
     int nevents = 0;
-    int rc = 0;
-    unsigned int i;
-    int setevents = 0;
     int monitoring = 0;
-    struct connreq *conn, *nextconn;
+    struct connreq *conn;
+    struct selectopts opts;
 
     /* If we're not currently managing any requests we can just
-      * leave here */
-    if (!requests)
-        return(original_poll(ufds, nfds, timeout));
+     * leave here */
+    if (!requests) {
+        show_msg(MSGDEBUG, "No requests waiting, calling real select\n");
+        return original_select(n, readfds, writefds, exceptfds, timeout);
+    }
 
-    show_msg(MSGTEST, "Intercepted call to poll\n");
-    show_msg(MSGDEBUG, "Intercepted call to poll with %d fds, "
-              "0x%08x timeout %d\n", nfds, ufds, timeout);
+    show_msg(MSGTEST, "Intercepted call to select\n");
+    show_msg(MSGDEBUG, "Intercepted call to select with %d fds, "
+              "0x%08x 0x%08x 0x%08x, timeout %08x\n", n,
+              readfds, writefds, exceptfds, timeout);
 
-    for (conn = requests; conn != NULL; conn = conn->next)
-        conn->selectevents = 0;
-
-    /* Record what events on our sockets the caller was interested
-      * in */
-    for (i = 0; i < nfds; i++) {
-        if (!(conn = find_socks_request(ufds[i].fd, 0)))
+    for (conn = requests; conn != NULL; conn = conn->next) {
+        if ((conn->state == FAILED) || (conn->state == DONE))
             continue;
-        show_msg(MSGDEBUG, "Have event checks for socks enabled socket %d\n",
-                conn->sockid);
-        conn->selectevents = ufds[i].events;
-        monitoring = 1;
+        conn->selectevents = 0;
+        show_msg(MSGDEBUG, "Checking requests for socks enabled socket %d\n",
+                 conn->sockid);
+        conn->selectevents |= (writefds ? (FD_ISSET(conn->sockid, writefds) ? WRITE : 0) : 0);
+        conn->selectevents |= (readfds ? (FD_ISSET(conn->sockid, readfds) ? READ : 0) : 0);
+        conn->selectevents |= (exceptfds ? (FD_ISSET(conn->sockid, exceptfds) ? EXCEPT : 0) : 0);
+        if (conn->selectevents) {
+            show_msg(MSGDEBUG, "Socket %d was set for events\n", conn->sockid);
+            show_msg(MSGDEBUG, "Watching for %d %d %d\n", writefds, readfds, exceptfds);
+            monitoring = 1;
+        }
     }
 
     if (!monitoring)
-        return(original_poll(ufds, nfds, timeout));
+        return original_select(n, readfds, writefds, exceptfds, timeout);
+    
+    memset(&opts, 0, sizeof(opts));
+    opts.is_select = 1;
+    opts.select_timeout = timeout;
+    opts.sigmask = NULL;
+    nevents = select_common(n, readfds, writefds, exceptfds, original_select, NULL, opts);
+    
+    return nevents;
+}
+
+/* Common functionality of poll and ppoll */
+int poll_common(struct pollfd * ufds, nfds_t nfds, 
+                 int (*original_poll)(POLL_SIGNATURE),
+                 int (*original_ppoll)(PPOLL_SIGNATURE), struct pollopts opts)
+{
+    int nevents = 0;
+    unsigned int i;
+    int setevents = 0;
+    struct connreq *conn, *nextconn;
 
     /* This is our poll loop. In it we repeatedly call poll(). We
-      * pass select the same event list as provided by the caller except we
-      * modify the events for the sockets we're managing to get events
-      * we're interested in (while negotiating with the socks server). When
-      * events we're interested in happen we go off and process the result
-      * ourselves, without returning the events to the caller. The loop
-      * ends when an event which isn't one we need to handle occurs or
-      * the poll times out */
+     * pass select the same event list as provided by the caller except we
+     * modify the events for the sockets we're managing to get events
+     * we're interested in (while negotiating with the socks server). When
+     * events we're interested in happen we go off and process the result
+     * ourselves, without returning the events to the caller. The loop
+     * ends when an event which isn't one we need to handle occurs or
+     * the poll times out */
     do {
         /* Enable our sockets for the events WE want to hear about */
         for (i = 0; i < nfds; i++) {
             if (!(conn = find_socks_request(ufds[i].fd, 0)))
                 continue;
+            
+                show_msg(MSGDEBUG, "Found our request, %x\n", conn);
 
             /* We always want to know about socket exceptions but they're
-              * always returned (i.e they don't need to be in the list of
-              * wanted events to be returned by the kernel */
+             * always returned (i.e they don't need to be in the list of
+             * wanted events to be returned by the kernel */
             ufds[i].events = 0;
 
             /* If we're waiting for a connect or to be able to send
-              * on a socket we want to get write events */
+             * on a socket we want to get write events */
             if ((conn->state == SENDING) || (conn->state == CONNECTING))
                 ufds[i].events |= POLLOUT;
             /* If we're waiting to receive data we want to get
-              * read events */
-            if (conn->state == RECEIVING)
+             * read events */
+            if (conn->state == RECEIVING || conn->state == SENTV4REQ || conn->state == SENTV5CONNECT)
                 ufds[i].events |= POLLIN;
+
+            show_msg(MSGDEBUG, "Events on socket are %d\n", ufds[i].events);
         }
 
-        nevents = original_poll(ufds, nfds, timeout);
+        if (opts.is_poll)
+            nevents = original_poll(ufds, nfds, opts.poll_timeout);
+        #ifdef PPOLL_AVAILABLE
+        else
+            nevents = original_ppoll(ufds, nfds, opts.ppoll_timeout_ts, opts.sigmask);
+        #endif /* PPOLL_AVAILABLE */
+        
+        show_msg(MSGDEBUG, "%s returned with %d\n", (opts.is_poll ? "poll" : "ppoll"), nevents);
+
         /* If there were no events we must have timed out or had an error */
         if (nevents <= 0)
             break;
 
         /* Loop through all the sockets we're monitoring and see if
-        * any of them have had events */
+         * any of them have had events */
         for (conn = requests; conn != NULL; conn = nextconn) {
             nextconn = conn->next;
             if ((conn->state == FAILED) || (conn->state == DONE))
@@ -697,7 +758,7 @@ int torsocks_poll_guts(POLL_SIGNATURE, int (*original_poll)(POLL_SIGNATURE))
             }
 
             /* Clear any read or write events on the socket, we'll reset
-              * any that are necessary later. */
+             * any that are necessary later. */
             setevents = ufds[i].revents;
             if (setevents & POLLIN) {
                 show_msg(MSGDEBUG, "Socket had read event\n");
@@ -716,10 +777,10 @@ int torsocks_poll_guts(POLL_SIGNATURE, int (*original_poll)(POLL_SIGNATURE))
             if (setevents & (POLLERR | POLLNVAL | POLLHUP)) {
                 conn->state = FAILED;
             } else {
-                rc = handle_request(conn);
+                handle_request(conn);
             }
             /* If the connection hasn't failed or completed there is nothing
-              * to report to the client */
+             * to report to the client */
             if ((conn->state != FAILED) &&
                 (conn->state != DONE))
                 continue;
@@ -738,10 +799,12 @@ int torsocks_poll_guts(POLL_SIGNATURE, int (*original_poll)(POLL_SIGNATURE))
                  * leaves us a bit hamstrung.
                  * We don't delete the request so that hopefully we can
                  * return the error on the socket if they call connect() on it */
+            } else if (conn->state == DONE) {
+                kill_socks_request(conn);
             } else {
                 /* The connection is done,  if the client polled for
                  * writing we can go ahead and signal that now (since the socket must
-                 * be ready for writing), otherwise we'll just let the select loop
+                 * be ready for writing), otherwise we'll just let the poll loop
                  * come around again (since we can't flag it for read, we don't know
                  * if there is any data to be read and can't be bothered checking) */
                 if (conn->selectevents & POLLOUT) {
@@ -761,7 +824,47 @@ int torsocks_poll_guts(POLL_SIGNATURE, int (*original_poll)(POLL_SIGNATURE))
         ufds[i].events = conn->selectevents;
     }
 
-    return(nevents);
+    return nevents;
+}
+
+int torsocks_poll_guts(POLL_SIGNATURE, int (*original_poll)(POLL_SIGNATURE))
+{
+    unsigned int i;
+    int monitoring = 0;
+    struct connreq *conn;
+    struct pollopts opts;
+
+    /* If we're not currently managing any requests we can just
+     * leave here
+     */
+    if (!requests)
+        return original_poll(ufds, nfds, timeout);
+
+    show_msg(MSGTEST, "Intercepted call to poll\n");
+    show_msg(MSGDEBUG, "Intercepted call to poll with %d fds, "
+              "0x%08x timeout %d\n", nfds, ufds, timeout);
+
+    for (conn = requests; conn != NULL; conn = conn->next)
+        conn->selectevents = 0;
+
+    /* Record which events on our sockets the caller was interested in */
+    for (i = 0; i < nfds; i++) {
+        if (!(conn = find_socks_request(ufds[i].fd, 0)))
+            continue;
+        show_msg(MSGDEBUG, "Have event checks for socks enabled socket %d\n",
+                conn->sockid);
+        conn->selectevents = ufds[i].events;
+        monitoring = 1;
+    }
+
+    if (!monitoring)
+        return original_poll(ufds, nfds, timeout);
+
+    memset(&opts, 0, sizeof(opts));
+    opts.is_poll = 1;
+    opts.poll_timeout = timeout;
+    opts.sigmask = NULL;
+    return poll_common(ufds, nfds, original_poll, NULL, opts);
 }
 
 int torsocks_close_guts(CLOSE_SIGNATURE, int (*original_close)(CLOSE_SIGNATURE))
@@ -1037,7 +1140,7 @@ ssize_t torsocks_sendto_guts(SENDTO_SIGNATURE, ssize_t (*original_sendto)(SENDTO
     /* If the real sendto doesn't exist, we're stuffed */
     if (original_sendto == NULL) {
         show_msg(MSGERR, "Unresolved symbol: sendto\n");
-        return(-1);
+        return -1;
     }
 
     show_msg(MSGTEST, "Got sendto request\n");
@@ -1077,7 +1180,7 @@ ssize_t torsocks_sendmsg_guts(SENDMSG_SIGNATURE, ssize_t (*original_sendmsg)(SEN
     /* If the real sendmsg doesn't exist, we're stuffed */
     if (original_sendmsg == NULL) {
         show_msg(MSGERR, "Unresolved symbol: sendmsg\n");
-        return(-1);
+        return -1;
     }
 
     show_msg(MSGTEST, "Got sendmsg request\n");
@@ -1106,3 +1209,338 @@ ssize_t torsocks_sendmsg_guts(SENDMSG_SIGNATURE, ssize_t (*original_sendmsg)(SEN
     return (ssize_t) original_sendmsg(s, msg, flags);
 }
 
+/* TODO Add MMSG_AVAILABLE */
+#ifdef SENDMMSG_AVAILABLE
+int torsocks_sendmmsg_guts(SENDMMSG_SIGNATURE, int (*original_sendmmsg)(SENDMMSG_SIGNATURE))
+{
+    int sock_type = -1;
+    unsigned int sock_type_len = sizeof(sock_type);
+    struct sockaddr_in *connaddr;
+
+    /* If the real sendmmsg doesn't exist, we're stuffed */
+    if (original_sendmmsg == NULL) {
+        show_msg(MSGERR, "Unresolved symbol: sendmmsg\n");
+        return -1;
+    }
+
+    show_msg(MSGTEST, "Got sendmmsg request\n");
+
+    /* Get the type of the socket */
+    getsockopt(s, SOL_SOCKET, SO_TYPE,
+               (void *) &sock_type, &sock_type_len);
+
+    show_msg(MSGDEBUG, "sockopt: %i\n",  sock_type);
+
+    if ((sock_type != SOCK_STREAM)) {
+        show_msg(MSGERR, "sendmsg: Connection is a UDP or ICMP stream, may be a "
+                          "DNS request or other form of leak: rejecting.\n");
+        return -1;
+    }
+
+    connaddr = (struct sockaddr_in *) msgvec->msg_hdr.msg_name;
+
+    /* If there is no address in msg_name, sendmsg will only work if we
+       already allowed the socket to connect(), so we let it through.
+       Likewise if the socket is not an Internet connection. */
+    if (connaddr && (connaddr->sin_family != AF_INET)) {
+        show_msg(MSGDEBUG, "Connection isn't an Internet socket\n");
+    }
+
+    return original_sendmmsg(s, msgvec, vlen, flags);
+}
+#endif /* SENDMMSG_AVAILABLE */
+
+#ifdef RECVMMSG_AVAILABLE
+int torsocks_recvmmsg_guts(RECVMMSG_SIGNATURE, int (*original_recvmmsg)(RECVMMSG_SIGNATURE))
+{
+    /* If the real recvmmsg doesn't exist, we're stuffed */
+    if (original_recvmmsg == NULL) {
+        show_msg(MSGERR, "Unresolved symbol: recvmmsg\n");
+        return -1;
+    }
+
+    show_msg(MSGTEST, "Got recvmmsg request\n");
+
+    return original_recvmmsg(s, msgvec, vlen, flags, timeout);
+}
+#endif /* RECVMMSG_AVAILABLE */
+
+ssize_t torsocks_recvfrom_guts(RECVFROM_SIGNATURE, ssize_t(*original_recvfrom)(RECVFROM_SIGNATURE))
+{
+    /* If the real recvfrom doesn't exist, we're stuffed */
+    if (original_recvfrom == NULL) {
+        show_msg(MSGERR, "Unresolved symbol: recvfrom\n");
+        return -1;
+    }
+
+    show_msg(MSGTEST, "Got recvfrom request\n");
+
+    return (ssize_t) original_recvfrom(s, buf, len, flags, addr, addr_len);
+}
+
+ssize_t torsocks_recvmsg_guts(RECVMSG_SIGNATURE, ssize_t(*original_recvmsg)(RECVMSG_SIGNATURE))
+{
+    /* If the real recvmsg doesn't exist, we're stuffed */
+    if (original_recvmsg == NULL) {
+        show_msg(MSGERR, "Unresolved symbol: recvmsg\n");
+        return -1;
+    }
+
+    return (ssize_t) original_recvmsg(s, msg, flags);
+}
+
+ssize_t torsocks_write_guts(WRITE_SIGNATURE, ssize_t(*original_write)(WRITE_SIGNATURE))
+{
+    struct connreq *conn;
+    
+    /* If the real write doesn't exist, we're stuffed */
+    if (original_write == NULL) {
+        show_msg(MSGERR, "Unresolved symbol: write\n");
+        return -1;
+    }
+
+    show_msg(MSGTEST, "Got write request\n");
+
+    /* Are we handling this connect? */
+    if ((conn = find_socks_request(fd, 1))) {
+        if (conn->state != DONE &&
+            (!conn->using_optdata ||
+             (conn->using_optdata &&
+             ((conn->state != SENTV4REQ) && (conn->state != SENTV5CONNECT))))) {
+            errno = ENOTCONN;
+            return -1;
+        }
+    }
+
+    return original_write(fd, buf, count);
+}
+
+ssize_t torsocks_read_guts(READ_SIGNATURE, ssize_t(*original_read)(READ_SIGNATURE))
+{
+    struct connreq *conn;
+    
+    /* If the real read doesn't exist, we're stuffed */
+    if (original_read == NULL) {
+        show_msg(MSGERR, "Unresolved symbol: read\n");
+        return -1;
+    }
+
+    show_msg(MSGTEST, "Got read request\n");
+
+    /* Are we handling this connect? */
+    if ((conn = find_socks_request(fd, 1))) {
+	/* Complete SOCKS handshake if necessary */
+	handle_request(conn);
+
+        if (conn->state != DONE) {
+            errno = EBADF;
+            return -1;
+        }
+    }
+    return original_read(fd, buf, count);
+}
+
+ssize_t torsocks_send_guts(SEND_SIGNATURE, ssize_t(*original_send)(SEND_SIGNATURE))
+{
+    struct connreq *conn;
+    
+    /* If the real send doesn't exist, we're stuffed */
+    if (original_send == NULL) {
+        show_msg(MSGERR, "Unresolved symbol: send\n");
+        return -1;
+    }
+
+    show_msg(MSGTEST, "Got send request\n");
+
+    /* Are we handling this connect? */
+    if ((conn = find_socks_request(fd, 1))) {
+        if (conn->state != DONE &&
+            (!conn->using_optdata ||
+             (conn->using_optdata &&
+             ((conn->state != SENTV4REQ) && (conn->state != SENTV5CONNECT))))) {
+            errno = ENOTCONN;
+            return -1;
+        }
+    }
+
+    return original_send(fd, buf, count, flags);
+}
+
+ssize_t torsocks_recv_guts(RECV_SIGNATURE, ssize_t(*original_recv)(RECV_SIGNATURE))
+{
+    struct connreq *conn;
+    
+    /* If the real recv doesn't exist, we're stuffed */
+    if (original_recv == NULL) {
+        show_msg(MSGERR, "Unresolved symbol: recv\n");
+        return -1;
+    }
+
+    show_msg(MSGTEST, "Got recv request\n");
+
+    /* Are we handling this connect? */
+    if ((conn = find_socks_request(fd, 1))) {
+	/* Complete SOCKS handshake if necessary */
+	handle_request(conn);
+
+        if (conn->state != DONE) {
+            errno = ENOTCONN;
+            return -1;
+        }
+    }
+
+    return original_recv(fd, buf, count, flags);
+}
+
+ssize_t torsocks_readv_guts(READV_SIGNATURE, ssize_t(*original_readv)(READV_SIGNATURE))
+{
+    struct connreq *conn;
+    
+    /* If the real readv doesn't exist, we're stuffed */
+    if (original_readv == NULL) {
+        show_msg(MSGERR, "Unresolved symbol: readv\n");
+        return -1;
+    }
+
+    show_msg(MSGTEST, "Got readv request\n");
+
+    /* Are we handling this connect? */
+    if ((conn = find_socks_request(fd, 1))) {
+	/* Complete SOCKS handshake if necessary */
+	handle_request(conn);
+
+        if (conn->state != DONE) {
+            errno = EBADF;
+            return -1;
+        }
+    }
+
+    return original_readv(fd, iov, iovcnt);
+}
+
+ssize_t torsocks_writev_guts(WRITEV_SIGNATURE, ssize_t(*original_writev)(WRITEV_SIGNATURE))
+{
+    struct connreq *conn;
+
+    /* If the real writev doesn't exist, we're stuffed */
+    if (original_writev == NULL) {
+        show_msg(MSGERR, "Unresolved symbol: writev\n");
+        return -1;
+    }
+
+    show_msg(MSGTEST, "Got writev request\n");
+
+    /* Are we handling this connect? */
+    if ((conn = find_socks_request(fd, 1))) {
+        if (conn->state != DONE &&
+            (!conn->using_optdata ||
+             (conn->using_optdata &&
+             ((conn->state != SENTV4REQ) && (conn->state != SENTV5CONNECT))))) {
+            errno = ENOTCONN;
+            return -1;
+        }
+    }
+
+    return original_writev(fd, iov, iovcnt);
+}
+
+#if PPOLL_AVAILABLE
+int torsocks_ppoll_guts(PPOLL_SIGNATURE, int(*original_ppoll)(PPOLL_SIGNATURE))
+{
+    unsigned int i;
+    int monitoring = 0;
+    struct connreq *conn;
+    struct pollopts opts;
+
+    /* If the real ppoll doesn't exist, we're stuffed */
+    if (original_ppoll == NULL) {
+        show_msg(MSGERR, "Unresolved symbol: ppoll\n");
+        return -1;
+    }
+
+    show_msg(MSGTEST, "Got ppoll request\n");
+
+    /* If we're not currently managing any requests we can just
+     * leave here */
+    if (!requests)
+        return original_ppoll(fds, nfds, timeout, sigmask);
+
+    show_msg(MSGTEST, "Intercepted call to ppoll\n");
+    show_msg(MSGDEBUG, "Intercepted call to ppoll with %d fds, "
+              "0x%08x timeout %d\n", nfds, fds, timeout);
+
+    for (conn = requests; conn != NULL; conn = conn->next)
+        conn->selectevents = 0;
+
+    /* Record what events on our sockets the caller was interested in */
+    for (i = 0; i < nfds; i++) {
+        if (!(conn = find_socks_request(fds[i].fd, 0)))
+            continue;
+        show_msg(MSGDEBUG, "Have event checks for socks enabled socket %d\n",
+                conn->sockid);
+        conn->selectevents = fds[i].events;
+        monitoring = 1;
+    }
+
+    if (!monitoring)
+        return original_ppoll(fds, nfds, timeout, sigmask);
+
+    memset(&opts, 0, sizeof(opts));
+    opts.ppoll_timeout_ts = timeout;
+    opts.sigmask = sigmask;
+    return poll_common(fds, nfds, NULL, original_ppoll, opts);
+}
+#endif /* PPOLL_AVAILABLE */
+
+int torsocks_pselect_guts(PSELECT_SIGNATURE, int(*original_pselect)(PSELECT_SIGNATURE))
+{
+    int nevents = 0;
+    int monitoring = 0;
+    struct connreq *conn;
+    struct selectopts opts;
+
+    /* If the real pselect doesn't exist, we're stuffed */
+    if (original_pselect == NULL) {
+        show_msg(MSGERR, "Unresolved symbol: pselect\n");
+        return -1;
+    }
+
+    show_msg(MSGTEST, "Got pselect request\n");
+
+    /* If we're not currently managing any requests we can just
+     * leave here */
+    if (!requests) {
+        show_msg(MSGDEBUG, "No requests waiting, calling real pselect\n");
+        return original_pselect(nfds, readfds, writefds, exceptfds, timeout, sigmask);
+    }
+
+    show_msg(MSGTEST, "Intercepted call to pselect\n");
+    show_msg(MSGDEBUG, "Intercepted call to pselect with %d fds, "
+              "0x%08x 0x%08x 0x%08x, timeout %08x\n", nfds,
+              readfds, writefds, exceptfds, timeout);
+
+    for (conn = requests; conn != NULL; conn = conn->next) {
+        if ((conn->state == FAILED) || (conn->state == DONE))
+            continue;
+        conn->selectevents = 0;
+        show_msg(MSGDEBUG, "Checking requests for socks enabled socket %d\n",
+                 conn->sockid);
+        conn->selectevents |= (writefds ? (FD_ISSET(conn->sockid, writefds) ? WRITE : 0) : 0);
+        conn->selectevents |= (readfds ? (FD_ISSET(conn->sockid, readfds) ? READ : 0) : 0);
+        conn->selectevents |= (exceptfds ? (FD_ISSET(conn->sockid, exceptfds) ? EXCEPT : 0) : 0);
+        if (conn->selectevents) {
+            show_msg(MSGDEBUG, "Socket %d was set for events\n", conn->sockid);
+            monitoring = 1;
+        }
+    }
+
+    if (!monitoring)
+        return original_pselect(nfds, readfds, writefds, exceptfds, timeout, sigmask);
+    
+    memset(&opts, 0, sizeof(opts));
+    opts.pselect_timeout = timeout;
+    opts.sigmask = sigmask;
+    nevents = select_common(nfds, readfds, writefds, exceptfds, NULL, original_pselect, opts);
+    
+    return nevents;
+}
