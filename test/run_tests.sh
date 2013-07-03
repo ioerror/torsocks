@@ -35,7 +35,7 @@ fi
 
 torsocks ./test_torsocks > /tmp/newresults.txt 2>&1
 output=`diff expectedresults.txt /tmp/newresults.txt`
-if ["$output" = ""]; then
+if [ "$output" = "" ]; then
   echo "Tests passed"
 else
   echo "Tests failed. Please post this output to http://code.google.com/p/torsocks/issues/entry"
