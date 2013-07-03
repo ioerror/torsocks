@@ -277,11 +277,24 @@ int torsocks_connect_guts(CONNECT_SIGNATURE, int (*original_connect)(CONNECT_SIG
         !is_dead_address(pool, connaddr->sin_addr.s_addr)) {
         char buf[16];
         inet_ntop(AF_INET, &(connaddr->sin_addr), buf, sizeof(buf));
-        show_msg(MSGERR, "connect: Connection is to a local address (%s), may be a "
-                         "TCP DNS request to a local DNS server so have to reject to be safe. "
-                         "Please report a bug to http://code.google.com/p/torsocks/issues/entry if "
-                         "this is preventing a program from working properly with torsocks.\n", buf);
-        return -1;
+        if (connaddr->sin_port == htons(DNS_PORT)) {
+            show_msg(MSGERR, "connect: Connection is to a local address (%s) on DNS port, may be a "
+                             "TCP DNS request to a local DNS server so have to reject to be safe. "
+                             "Please report a bug to http://code.google.com/p/torsocks/issues/entry if "
+                             "this is preventing a program from working properly with torsocks.\n", buf);
+            return -1;
+        } else if(!config.local_connect_enabled) {
+            show_msg(MSGERR, "connect: Connection is to a local address (%s) on non-DNS port, may be a "
+                             "TCP DNS request to a local DNS server on a non-standard port, so have to "
+                             "reject to be safe. If you would like to allow this connection to happen, "
+                             "you may use the local_connect_enable option in the torsocks config file. "
+                             "Please report a bug to http://code.google.com/p/torsocks/issues/entry if "
+                             "this is preventing a program from working properly with torsocks.\n", buf);
+            return -1;
+        } else {
+            show_msg(MSGDEBUG, "Direct connection to: %s:%d \n", buf, ntohs(connaddr->sin_port));
+            return(original_connect(__fd, __addr, __len));
+        }
     }
 
     /* If this is an INET6, we'll refuse it. */

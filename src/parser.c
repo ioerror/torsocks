@@ -51,6 +51,7 @@ static int handle_server(struct parsedfile *, int, char *);
 static int handle_type(struct parsedfile *config, int, char *);
 static int handle_port(struct parsedfile *config, int, char *);
 static int handle_local(struct parsedfile *, int, const char *);
+static int handle_local_connect_enable(struct parsedfile *, int, char *);
 static int handle_tordns_enabled(struct parsedfile *, int, char *);
 static int handle_tordns_deadpool_range(struct parsedfile *, int, const char *);
 static int handle_tordns_cache_size(struct parsedfile *, char *);
@@ -205,6 +206,8 @@ static int handle_line(struct parsedfile *config, char *line, int lineno) {
                 handle_defpass(config, lineno, words[2]);
             } else if (!strcmp(words[0], "local")) {
                 handle_local(config, lineno, words[2]);
+            } else if (!strcmp(words[0], "local_connect_enable")) {
+                handle_local_connect_enable(config, lineno, words[2]);
             } else if (!strcmp(words[0], "tordns_enable")) {
                 handle_tordns_enabled(config, lineno, words[2]);
             } else if (!strcmp(words[0], "tordns_deadpool_range")) {
@@ -488,6 +491,19 @@ static int handle_flag(char *value)
     } else {
         return -1;
     }
+}
+
+static int handle_local_connect_enable(struct parsedfile *config, int lineno,
+                           char *value)
+{
+    int val = handle_flag(value);
+    if(val == -1) {
+        show_msg(MSGERR, "Invalid value %s supplied for local_connect_enable at "
+                 "line %d in config file, IGNORED\n", value, lineno);
+    } else {
+        config->local_connect_enabled = val;
+    }
+    return 0;
 }
 
 static int handle_tordns_enabled(struct parsedfile *config, int lineno,

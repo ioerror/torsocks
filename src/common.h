@@ -96,6 +96,8 @@ unsigned int resolve_ip(char *, int, int);
 #define MSGNOTICE 3
 #define MSGDEBUG  3
 
+#define DNS_PORT 53
+
 /* Required by some BSDs */
 #ifndef  MAP_ANONYMOUS
 #ifdef MAP_ANON
