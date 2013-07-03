@@ -54,6 +54,7 @@ struct parsedfile {
    struct netent *localnets;
    struct serverent defaultserver;
    struct serverent *paths;
+   int local_connect_enabled;
    int tordns_enabled;
    int tordns_failopen;
    unsigned int tordns_cache_size;

@@ -158,6 +158,14 @@ range 150.0.0.0 to 150.255.255.255 when the connection request is for ports
 80-1024.
 
 .TP
+.I local_connect_enable
+This allows the application to connect to local IP addresses. Note that all
+connection attempts to port 53 (DNS) will be refused, no matter the value of
+this setting. However, it may be still be unsafe to enable this setting, as the
+application may connect to a local DNS server listening on a non-standard port.
+The default value is `false'.
+
+.TP
 .I tordns_enable
 This enables the use of the 'tordns' feature in torsocks, which overrides the
 standard C library name resolution calls to use SOCKS.    The default value is 

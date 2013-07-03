@@ -13,7 +13,7 @@ libtorsocks: connect: Connection is a UDP or ICMP stream, may be a DNS request o
 libtorsocks: our_gethostbyaddr: resolved '38.229.70.16' to: 'vescum.torproject.org'
 libtorsocks: our_gethostbyname: 'www.torproject.org' requested
 libtorsocks: Got connection request
-libtorsocks: connect: Connection is to a local address (192.168.1.1), may be a TCP DNS request to a local DNS server so have to reject to be safe. Please report a bug to http://code.google.com/p/torsocks/issues/entry if this is preventing a program from working properly with torsocks.
+libtorsocks: connect: Connection is to a local address (192.168.1.1) on non-DNS port, may be a TCP DNS request to a local DNS server on a non-standard port, so have to reject to be safe. If you would like to allow this connection to happen, you may use the local_connect_enable option in the torsocks config file. Please report a bug to http://code.google.com/p/torsocks/issues/entry if this is preventing a program from working properly with torsocks.
 libtorsocks: Got connection request
 libtorsocks: Intercepted call to getpeername
 libtorsocks: Got res_init request
@@ -27,15 +27,15 @@ libtorsocks: Got connection request
 libtorsocks: Intercepted call to getpeername
 libtorsocks: Got res_init request
 libtorsocks: Got connection request
-libtorsocks: connect: Connection is to a local address (192.168.1.1), may be a TCP DNS request to a local DNS server so have to reject to be safe. Please report a bug to http://code.google.com/p/torsocks/issues/entry if this is preventing a program from working properly with torsocks.
+libtorsocks: connect: Connection is to a local address (192.168.1.1) on DNS port, may be a TCP DNS request to a local DNS server so have to reject to be safe. Please report a bug to http://code.google.com/p/torsocks/issues/entry if this is preventing a program from working properly with torsocks.
 libtorsocks: Got connection request
-libtorsocks: connect: Connection is to a local address (192.168.1.1), may be a TCP DNS request to a local DNS server so have to reject to be safe. Please report a bug to http://code.google.com/p/torsocks/issues/entry if this is preventing a program from working properly with torsocks.
+libtorsocks: connect: Connection is to a local address (192.168.1.1) on DNS port, may be a TCP DNS request to a local DNS server so have to reject to be safe. Please report a bug to http://code.google.com/p/torsocks/issues/entry if this is preventing a program from working properly with torsocks.
 libtorsocks: Got connection request
-libtorsocks: connect: Connection is to a local address (192.168.1.1), may be a TCP DNS request to a local DNS server so have to reject to be safe. Please report a bug to http://code.google.com/p/torsocks/issues/entry if this is preventing a program from working properly with torsocks.
+libtorsocks: connect: Connection is to a local address (192.168.1.1) on DNS port, may be a TCP DNS request to a local DNS server so have to reject to be safe. Please report a bug to http://code.google.com/p/torsocks/issues/entry if this is preventing a program from working properly with torsocks.
 libtorsocks: Got connection request
-libtorsocks: connect: Connection is to a local address (192.168.1.1), may be a TCP DNS request to a local DNS server so have to reject to be safe. Please report a bug to http://code.google.com/p/torsocks/issues/entry if this is preventing a program from working properly with torsocks.
+libtorsocks: connect: Connection is to a local address (192.168.1.1) on DNS port, may be a TCP DNS request to a local DNS server so have to reject to be safe. Please report a bug to http://code.google.com/p/torsocks/issues/entry if this is preventing a program from working properly with torsocks.
 libtorsocks: Got connection request
-libtorsocks: connect: Connection is to a local address (192.168.1.1), may be a TCP DNS request to a local DNS server so have to reject to be safe. Please report a bug to http://code.google.com/p/torsocks/issues/entry if this is preventing a program from working properly with torsocks.
+libtorsocks: connect: Connection is to a local address (192.168.1.1) on DNS port, may be a TCP DNS request to a local DNS server so have to reject to be safe. Please report a bug to http://code.google.com/p/torsocks/issues/entry if this is preventing a program from working properly with torsocks.
 socket: Operation not permitted
 
 ----------------------getaddrinfo() TEST-----------------
