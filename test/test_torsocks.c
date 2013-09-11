@@ -406,6 +406,8 @@ static int getaddrinfo_test() {
     struct addrinfo hints;
     struct addrinfo *result;
     int s;
+    const char *port="9050";
+    const char *host="www.torproject.org";
 
     printf("\n----------------------getaddrinfo() TEST-----------------\n\n");
 
@@ -418,10 +420,13 @@ static int getaddrinfo_test() {
     hints.ai_addr = NULL;
     hints.ai_next = NULL;
 
-    s = getaddrinfo(NULL, "www.torproject.org", &hints, &result);
+    s = getaddrinfo(host,port, &hints, &result);
     if (s != 0) {
         printf("getaddrinfo: %s\n", gai_strerror(s));
     }
+    else
+      printf("getaddrinfo succeeded in populating an addrinfo struct for port %s and host %s",
+	     port,host);
 
     return 0;
 }

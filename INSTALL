@@ -11,7 +11,7 @@ To Compile from CVS/SVN
 Original Installation Instructions For Tsocks
 ---------------------------------------------
 
-1. Explenations of the ./configure options which might be of interest (and that are 
+1. Explanations of the ./configure options which might be of interest (and that are 
    specific to tsocks include):
 	--disable-tordns	This option disables tordns, which causes
 				names to be looked up in a way designed to
