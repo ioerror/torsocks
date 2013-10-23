@@ -177,9 +177,9 @@ store_pool_entry(dead_pool *pool, char *hostname, struct in_addr *addr)
       return oldpos;
   }
 
-  /* If this is a .onion host, then we return a bogus ip from our deadpool, 
-     otherwise we try to resolve it and store the 'real' IP */
-  if(strcasecmpend(hostname, ".onion") == 0) {
+  /* If this is a .onion or .i2p host, then we return a bogus ip from our
+     deadpool, otherwise we try to resolve it and store the 'real' IP */
+  if(strcasecmpend(hostname, ".onion") == 0 || strcasecmpend(hostname, ".i2p") == 0) {
       get_next_dead_address(pool, &pool->entries[position].ip);
   } else {
       rc = do_resolve(hostname, pool->sockshost, pool->socksport, &intaddr, 0,
