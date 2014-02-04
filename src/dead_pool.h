@@ -54,7 +54,6 @@ dead_pool *init_pool(unsigned int deadpool_size, struct in_addr deadrange_base,
     struct in_addr deadrange_mask, char *sockshost, uint16_t socksport);
 int is_dead_address(dead_pool *pool, uint32_t addr);
 char *get_pool_entry(dead_pool *pool, struct in_addr *addr);
-int search_pool_for_name(dead_pool *pool, const char *name);
 struct hostent *our_gethostbyname(dead_pool *pool, const char *name);
 struct hostent *our_gethostbyaddr(dead_pool *pool, const void *addr,
                                   socklen_t len, int type);

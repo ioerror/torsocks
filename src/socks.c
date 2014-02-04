@@ -86,6 +86,7 @@ static int send_socksv4a_request(struct connreq *conn, const char *onion_host);
 dead_pool *pool = NULL;
 struct connreq *requests = NULL;
 
+ATTR_HIDDEN
 struct connreq *new_socks_request(int sockid, struct sockaddr_in *connaddr,
                                          struct sockaddr_in *serveraddr,
                                          struct serverent *path)
@@ -111,6 +112,7 @@ struct connreq *new_socks_request(int sockid, struct sockaddr_in *connaddr,
     return(newconn);
 }
 
+ATTR_HIDDEN
 void kill_socks_request(struct connreq *conn)
 {
     struct connreq *connnode;
@@ -129,6 +131,7 @@ void kill_socks_request(struct connreq *conn)
     free(conn);
 }
 
+ATTR_HIDDEN
 struct connreq *find_socks_request(int sockid, int includefinished)
 {
     struct connreq *connnode;
@@ -146,6 +149,7 @@ struct connreq *find_socks_request(int sockid, int includefinished)
     return(NULL);
 }
 
+ATTR_HIDDEN
 int handle_request(struct connreq *conn)
 {
     int rc = 0;

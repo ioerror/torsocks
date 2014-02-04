@@ -24,6 +24,7 @@
 #include <sys/types.h>
 
 #if defined(__GNUC__) && __GNUC__ >= 3
+#define ATTR_HIDDEN __attribute__((visibility("hidden")))
 #define ATTR_NORETURN __attribute__((noreturn))
 #define ATTR_PURE __attribute__((pure))
 #define ATTR_CONST __attribute__((const))

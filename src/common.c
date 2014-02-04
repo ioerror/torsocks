@@ -59,7 +59,7 @@ int logstamp = 0;         /* Timestamp (and pid stamp) messages */
  * *(uint16_t*)(cp), but will not cause segfaults on platforms that forbid
  * unaligned memory access.
  */
-uint16_t
+ATTR_HIDDEN uint16_t
 get_uint16(const char *cp)
 {
     uint16_t v;
@@ -71,7 +71,7 @@ get_uint16(const char *cp)
  * *(uint32_t*)(cp), but will not cause segfaults on platforms that forbid
  * unaligned memory access.
  */
-uint32_t
+ATTR_HIDDEN uint32_t
 get_uint32(const char *cp)
 {
     uint32_t v;
@@ -82,7 +82,7 @@ get_uint32(const char *cp)
  * Set a 16-bit value beginning at <b>cp</b> to <b>v</b>. Equivalent to
  * *(uint16_t)(cp) = v, but will not cause segfaults on platforms that forbid
  * unaligned memory access. */
-void
+ATTR_HIDDEN void
 set_uint16(char *cp, uint16_t v)
 {
     memcpy(cp,&v,2);
@@ -91,12 +91,13 @@ set_uint16(char *cp, uint16_t v)
  * Set a 32-bit value beginning at <b>cp</b> to <b>v</b>. Equivalent to
  * *(uint32_t)(cp) = v, but will not cause segfaults on platforms that forbid
  * unaligned memory access. */
-void
+ATTR_HIDDEN void
 set_uint32(char *cp, uint32_t v)
 {
     memcpy(cp,&v,4);
 }
 
+ATTR_HIDDEN
 unsigned int resolve_ip(char *host, int showmsg, int allownames) {
     struct hostent *new;
     unsigned int    hostaddr;
@@ -136,6 +137,7 @@ unsigned int resolve_ip(char *host, int showmsg, int allownames) {
 /*             be logged instead of to standard error           */
 /*  timestamp - This indicates that messages should be prefixed */
 /*              with timestamps (and the process id)            */
+ATTR_HIDDEN
 void set_log_options(int level, char *filename, int timestamp) {
 
    loglevel = level;
@@ -152,7 +154,7 @@ void set_log_options(int level, char *filename, int timestamp) {
 
 /* Count the bits in a netmask.  This is a little bit buggy; it assumes 
    all the zeroes are on the right... */
-
+ATTR_HIDDEN
 int count_netmask_bits(uint32_t mask)
 {
     int i;
@@ -171,6 +173,7 @@ int count_netmask_bits(uint32_t mask)
     return nbits;
 }
 
+ATTR_HIDDEN
 void show_msg(int level, const char *fmt, ...) {
     va_list ap;
     int saveerr;

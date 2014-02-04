@@ -57,7 +57,9 @@ static int handle_tordns_cache_size(struct parsedfile *, char *);
 static int handle_defuser(struct parsedfile *, int, char *);
 static int handle_defpass(struct parsedfile *, int, char *);
 static int make_netent(char *value, struct netent **ent);
+static char *strsplit(char *separator, char **text, const char *search);
 
+ATTR_HIDDEN
 int read_config (char *filename, struct parsedfile *config) {
     FILE *conf;
     char line[MAXLINE];
@@ -756,6 +758,7 @@ int make_netent(char *value, struct netent **ent) {
     return(0);
 }
 
+ATTR_HIDDEN
 int is_local(struct parsedfile *config, struct in_addr *testip) {
     struct netent *ent;
     char buf[16];
@@ -799,6 +802,7 @@ int is_local(struct parsedfile *config, struct in_addr *testip) {
 }
 
 /* Find the appropriate server to reach an ip */
+ATTR_HIDDEN
 int pick_server(struct parsedfile *config, struct serverent **ent, 
                 struct in_addr *ip, unsigned int port) {
     struct netent *net;
@@ -843,7 +847,7 @@ int pick_server(struct parsedfile *config, struct serverent **ent,
 /* the start pointer is set to be NULL. The difference between      */
 /* standard strsep and this function is that this one will          */
 /* set *separator to the character separator found if it isn't null */
-char *strsplit(char *separator, char **text, const char *search) {
+static char *strsplit(char *separator, char **text, const char *search) {
    unsigned int len;
    char *ret;
 
